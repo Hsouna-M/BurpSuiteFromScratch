@@ -1,0 +1,50 @@
+@startuml
+title Interception and modification of an HTTPS web request
+
+actor User
+participant Browser as B
+participant App as P #LightBlue
+participant WebServer as WS
+
+autonumber "0. "
+
+activate P
+User -> P: Turn on intercept
+User <-- P: Intercept is ON
+
+activate B
+User -> B: GET : https://www.google.com/search?q=tek-up
+B -> P : TLS Demand (simplified)
+B <- P : TLS Resp (simplified)
+B -> P: GET : https://www.google.com/search?q=tek-up
+
+P -> P : Decrypt and save the Request 
+activate P
+deactivate P
+P --> User :  Display the request (headers, body, parameters)
+
+User -> P : modify 'q' pram "tek-up" to "tek-down" and send 
+
+activate WS
+
+P -> WS : TLS Demand (simplified)
+P <-- WS : TLS Resp (simplified)
+
+P -> P  : Encrypt and Save the Request
+activate P 
+deactivate P 
+P -> WS : GET : https://www.google.com/search?q=tek-down
+WS -> P : HTTPS Response 
+
+P -> P  : Decrypt and Save the Response 
+activate P
+deactivate P
+P --> User  : Display the Response
+
+User -> P : Send Response to Browser
+
+P -> P : Encrypt the Response 
+
+P -> B : HTTPS Response 
+
+B --> User : Displays Web page
