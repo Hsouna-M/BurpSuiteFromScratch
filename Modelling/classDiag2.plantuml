@@ -1,0 +1,80 @@
+@startuml
+' Hide methods and empty compartments
+hide methods
+hide empty fields
+
+' Core classes
+class HttpMessage {
+  - id: UUID
+  - timestamp: Instant
+  - method: String
+  - url: URI
+  - headers: Map<String, List<String>>
+  - body: byte[]
+  - sourceIp: String
+  - sourcePort: int
+  - destinationIp: String
+  - destinationPort: int
+}
+
+class HttpsMessage {
+  - tlsVersion: String
+  - cipherSuite: String
+  - serverCertificate: X509Certificate
+  - clientCertificate: X509Certificate
+  - sniHostname: String
+  - isDecrypted: boolean
+}
+
+class HttpRequest {
+  ' Inherits core HTTP fields + request-specific
+}
+
+class HttpResponse {
+  - statusCode: int
+  - statusMessage: String
+}
+
+class HttpsRequest {
+  ' Combines HTTP request + TLS context
+}
+
+class HttpsResponse {
+  ' Combines HTTP response + TLS context
+}
+
+class ProxySession {
+  - sessionId: UUID
+  - startTime: Instant
+  - endTime: Instant
+  - clientAddress: String
+  - targetHost: String
+  - isHttps: boolean
+  - protocol: String
+}
+
+class MitmProxy {
+  - name: String
+  - listenAddress: String
+  - listenPort: int
+  - sslEnabled: boolean
+  - rootCaCert: X509Certificate
+  - interceptionRules: List<String>
+}
+
+' Relationships
+MitmProxy "1" *-- "0..*" ProxySession : manages >
+
+ProxySession "1" *-- "0..*" HttpMessage : contains >
+ProxySession "1" *-- "0..*" HttpsMessage : contains >
+
+HttpMessage <|-- HttpRequest
+HttpMessage <|-- HttpResponse
+
+HttpsMessage <|-- HttpsRequest
+HttpsMessage <|-- HttpsResponse
+
+HttpRequest --|> HttpsRequest : extends
+HttpResponse --|> HttpsResponse : extends
+
+@enduml

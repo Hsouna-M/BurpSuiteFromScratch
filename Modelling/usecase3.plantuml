@@ -1,78 +1,47 @@
 @startuml
 left to right direction 
 
-actor "Tester" as pentester
-actor "Browser" as browser #red;line:red;line.bold;text:red
-actor "Browser" as samebrowser  #red;line:red;line.bold;text:red
-actor "Server" as server #Blue;line:Blue;line.bold;text:Blue
-actor "Server" as sameserver #Blue;line:Blue;line.bold;text:Blue
+actor "Testeur" as pentester
 
 rectangle "Burpsuite TekUp Edition"{
-    usecase "Consult intercepted Http/s Requests" as consult
-    usecase "Intercept Traffic" as intercept
-        usecase "Intercept Requests" as requestsintercept
-        usecase "Intercept Responses" as responseintercept 
-            requestsintercept -right-|> intercept
-            responseintercept -right-|> intercept 
-        intercept <.right. consult : <<include>>
-        requestsintercept --> samebrowser 
-        responseintercept --> sameserver 
-    usecase "Change Proxy Mode" as mode 
-        usecase "Activate Intercept Mode" as interceptmode
-            mode <|-- interceptmode
-        intercept ..> interceptmode : <<include>> 
-        usecase "Activate Filter Mode" as filtermode
-            mode <|-- filtermode 
-            usecase "Block popUps" as popupblock
-                popupblock ..> filtermode : <<include>>
-                popupblock --> samebrowser 
-            usecase "Block Prohibited Domains" as domainblock 
-                domainblock .right.> filtermode : <<include>>
-                domainblock --> samebrowser 
-            usecase "Block Responses using Word list" as responsewordblock 
-                filtermode <.. responsewordblock : <<include>> 
-                responsewordblock --> server
-    usecase "Display an Http/s Request/Response " as display
-        usecase "Display the header "   as headerdisplay 
-        usecase "Display the body "     as bodydisplay
-            display <|-- headerdisplay
-            display <|-- bodydisplay 
-    usecase "Mark an Http/s Request/Response" as mark
-        consult <.. mark : <<extends>>
-        consult <.. display : <<extends>>
-    usecase "Edit the content" as edit
-        headerdisplay <.. edit : <<extends>>
-        bodydisplay <.. edit : <<extends>>
-    usecase "Drop an Https/s Request/Response"  as  drop
-    usecase "Save an Https/s Request/Response"  as  save
-    usecase "Forward an Http/s Request/Response"  as  send 
-        usecase "Forward Http/s Request" as requestforward 
-        usecase "Forward Http/s Response" as responseforward 
-            send <|-- requestforward
-            send <|-- responseforward 
-    display <.. send : <<extend>>
-    display <.. drop: <<extend>>
-    display <.. save: <<extend>>
+    usecase "Intercepter le trafic" as intercept
+        usecase "Activer le mode d'interception" as interceptmode
+        interceptmode <.. intercept : <<include>> 
+        usecase "Activer le mode filtrage" as filtermode
+            usecase "Bloquer les pop-ups" as popupblock
+                filtermode <.. popupblock : <<include>>
 
-    usecase "Manage Word Lists" as wordlistmanage
-        usecase "add a wodlist" as addwordlist 
-        usecase "remove a wodlist" as removewordlist 
-        wordlistmanage <|- addwordlist
-        wordlistmanage <|- removewordlist 
+            usecase "Bloquer les domaines interdits" as domainblock 
+                domainblock .right.> filtermode : <<include>>
+
+            usecase "Bloquer les réponses à l'aide d'une liste de mots" as responsewordblock 
+                filtermode <.. responsewordblock : <<include>> 
+    usecase "Afficher une requête/réponse HTTP/S" as display
+    pentester -- display
+    display ..> intercept : <<include>>
+    usecase "Modifier le contenu" as edit
+        display <.. edit : <<extends>>
+        usecase "bruteforcer un parametre" as  bruteforce
+        usecase "Modifier un parametre manuellement" as manualedit
+            edit <|- bruteforce
+            edit <|- manualedit
+            edit -- manualedit  #white
+            edit -- bruteforce  #white
+    usecase "Supprimer une requête/réponse HTTP/S" as drop
+    usecase "Enregistrer une requête/réponse HTTP/S" as save
+    usecase "Transmettre une requête/réponse HTTP/S" as send 
+    display <.. send : <<extends>>
+    display <.. drop: <<extends>>
+    display <.. save: <<extends>>
+
 }
 
-pentester -- consult 
-requestforward --> server
-responseforward -->  browser
-pentester -- mode 
-pentester -up- wordlistmanage
-
-' fixing affichage 
-filtermode .up. interceptmode #White
-filtermode -- responsewordblock #White
-drop -right- headerdisplay #White
-wordlistmanage -left- consult #white
 
 
+pentester -- interceptmode
+pentester -- filtermode 
+
+
+' correction de l'affichage 
 
 @enduml

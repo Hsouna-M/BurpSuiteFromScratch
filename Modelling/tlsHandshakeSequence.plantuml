@@ -1,0 +1,22 @@
+@startuml
+title TLS 1.2 Handshake Sequence Diagram
+
+actor B
+actor P
+
+B -> P: BHello
+
+P -> B: PHello
+
+P -> B: Certificate
+P -> B: PKeyExchange (if needed)
+P -> B: PHelloDone
+
+B -> P: BKeyExchange
+B -> P: ChangeCipherSpec
+B -> P: Finished
+
+P -> B: ChangeCipherSpec
+P -> B: Finished
+
+@enduml

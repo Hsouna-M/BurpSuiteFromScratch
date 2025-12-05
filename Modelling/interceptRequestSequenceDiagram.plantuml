@@ -1,0 +1,44 @@
+@startuml
+title Interception d'une requête HTTPS
+
+actor testeur 
+participant Navigateur as B
+participant Proxy as P #LightBlue
+
+autonumber "0. "
+
+testeur -> P : activer le mode interception
+
+activate P
+testeur <-- P: écoute en cours
+
+activate B
+testeur -> B:  url : https://www.google.com/search?q=tek-up  
+B -> P : Syn
+B <- P : Syn/Ack 
+B -> P : Ack 
+
+B -> P: ClientHello
+P -> B: ServerHello
+
+P -> B: Certificat
+P -> B: Échange de clés serveur 
+P -> B: ServerHelloDone
+
+B -> P: Échange de clés client
+B -> P: ChangeCipherSpec
+B -> P: Finished
+
+P -> B: ChangeCipherSpec
+P -> B: Finished
+
+' toutes ces opérations sont synchrones car il n'y a pas de valeur de retour — les paquets eux-mêmes constituent les messages
+
+B -> P: GET : https://www.google.com/search?q=tek-up  
+
+P -> P : Déchiffrement et sauvegarde de la requête 
+activate P
+P --> testeur : Nouvelle requête capturée
+deactivate P
+
+@enduml

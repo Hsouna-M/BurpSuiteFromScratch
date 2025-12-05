@@ -1,0 +1,51 @@
+@startuml
+title Bloquer un domaine interdit
+
+actor testeur 
+participant Navigateur as B
+participant Proxy as P #LightBlue
+
+autonumber "0. "
+
+testeur -> P : activer le mode filtrage
+
+activate P
+testeur <-- P: écoute en cours
+
+activate B
+testeur -> B:  url : https://www.Prohibited.Domain/Page  
+B -> P : Syn
+B <- P : Syn/Ack 
+B -> P : Ack 
+
+B -> P: ClientHello
+P -> B: ServerHello
+
+P -> B: Certificat
+P -> B: Échange de clés serveur (si nécessaire)
+P -> B: ServerHelloDone
+
+B -> P: Échange de clés client
+B -> P: ChangeCipherSpec
+B -> P: Finished
+
+P -> B: ChangeCipherSpec
+P -> B: Finished
+
+' toutes ces opérations sont synchrones car il n'y a pas de valeur de retour — les paquets eux-mêmes constituent les messages
+
+B -> P: GET : https://www.Prohibited.Domain/Page  
+
+activate P
+P -> P : Déchiffrement de la requête
+
+P -> P : vérifier si {Request.Header.Host }   figure dans la liste des domaines interdits 
+alt host: prohibited.domain
+    P -> P : abandonner la requête 
+    P --> B : Requête abandonnée
+    deactivate P
+else autorisé 
+    ref over P : Transmettre la requette Https vers le serveur  
+end
+
+@enduml
