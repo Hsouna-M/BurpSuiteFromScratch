@@ -41,7 +41,4 @@ rectangle "Burpsuite TekUp Edition"{
 pentester -- interceptmode
 pentester -- filtermode 
 
-
-' correction de l'affichage 
-
 @enduml
