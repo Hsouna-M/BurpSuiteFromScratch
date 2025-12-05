@@ -5,8 +5,8 @@ actor "Testeur" as tester
 
 rectangle "Burpsuite Tek-Up Edition" as rec {
 
-    ' Analyser les requêtes
-    usecase "Analyser les requêtes" as Anal 
+    ' manipulateyser les requêtes
+    usecase "Manipuler les requêtes" as manipulate 
     usecase "Supprimer des requêtes/réponses" as drop 
     usecase "Marquer des requêtes/réponses" as bookmark 
     usecase "Afficher l'historique des requêtes/réponses" as log 
@@ -30,32 +30,32 @@ rectangle "Burpsuite Tek-Up Edition" as rec {
     usecase "Supprimer une liste" as delList
 }
 
-modify ..> showReq : <<include>>
+modify .....> showReq : <<include>>
 
 send ..> intercept : <<include>>
 send <.. intruder : <<extends>>
 
-Anal <|- showReq 
-Anal <|-- log 
-Anal <|-- drop 
-Anal ..> intercept #blue;text:blue : <<include>>
+tester ---- log 
+manipulate <|-- drop 
+manipulate ..> intercept #blue;text:blue : <<include>>
 showReq <.. bookmark : <<extends>>
-modify .right. Anal #White;line.dotted
+
+modify .right. manipulate #White;line.dotted
 log .left. drop #White;line.dotted
 
-domainBlock---|> addList 
-domainBlock---|> modList 
-domainBlock---|> delList 
+domainBlock <|--- addList 
+domainBlock <|--- modList 
+domainBlock <|--- delList 
 
-tester --> domainBlock
+tester -- domainBlock
 
+modify ------|> manipulate   
 
 showReq <|--- showHeader
 showReq <|--- showBody 
 
-tester --> modify
-tester --> addPayloadList 
-tester --> Anal 
-tester --> send 
+tester -- addPayloadList 
+tester -- manipulate 
+tester -- send 
 
 @enduml

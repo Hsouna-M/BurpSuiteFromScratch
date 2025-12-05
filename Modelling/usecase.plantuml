@@ -23,22 +23,23 @@ rectangle "Burpsuite Tek-Up Edition" as rec {
     usecase "Supprimer une liste" as delList
 }
 
-domainBlock---|> addList 
-domainBlock---|> modList 
-domainBlock---|> delList 
+domainBlock <|--- addList 
+domainBlock <|--- modList 
+domainBlock <|--- delList 
 
 showReq <|--- showHeader
 showReq <|--- showBody 
 
-tester --> modify
-tester --> addPayloadList 
+tester -- modify
+tester -- addPayloadList 
 modify .right. addPayloadList
-tester --> send 
-tester --> drop
-tester --> bookmark 
-tester --> log 
-tester --> showReq 
-tester --> domainBlock 
+tester -- send 
+tester -- drop
+tester -- bookmark 
+tester -- log 
+tester -- showReq 
+tester -- domainBlock 
 modify ...> intercept : <<include>>
 send <.... intruder : <<extends>>
+
 @enduml
