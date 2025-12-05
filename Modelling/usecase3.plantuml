@@ -10,9 +10,13 @@ actor "Server" as sameserver #Blue;line:Blue;line.bold;text:Blue
 rectangle "Burpsuite TekUp Edition"{
     usecase "Consult intercepted Http/s Requests" as consult
     usecase "Intercept Traffic" as intercept
+        usecase "Intercept Requests" as requestsintercept
+        usecase "Intercept Responses" as responseintercept 
+            requestsintercept -right-|> intercept
+            responseintercept -right-|> intercept 
         intercept <.right. consult : <<include>>
-        intercept --> samebrowser 
-        intercept --> sameserver 
+        requestsintercept --> samebrowser 
+        responseintercept --> sameserver 
     usecase "Change Proxy Mode" as mode 
         usecase "Activate Intercept Mode" as interceptmode
             mode <|-- interceptmode
