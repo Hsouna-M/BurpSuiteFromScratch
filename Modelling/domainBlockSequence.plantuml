@@ -1,0 +1,35 @@
+@startuml
+title Bloquer un domaine interdit
+
+actor testeur 
+participant Navigateur as B
+participant Proxy as P #LightBlue
+
+autonumber "0. "
+
+activate testeur
+activate P
+activate B
+
+testeur -> P : activer le mode filtrage
+
+testeur <<-- P: écoute en cours
+
+testeur -> B:  chercher https://www.Prohibited.Domain/Page  
+
+ref over B,P: tcp Handshake
+
+ref over B,P: SSL Handshake
+
+
+
+B -> P: GET /Page  HTTP/v.v
+
+P ->> P : Déchiffrement de la requête   
+P ->> P : vérifier {Request.Header.Host }
+
+    P ->> P : abandonner la requête 
+    P -->> B : HTTP/1.1 403 /n Content-Type: application/html /n/n<h1>accès refusé<h1>
+    B -->>  testeur  : accès refusé
+
+@enduml

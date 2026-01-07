@@ -1,0 +1,44 @@
+@startuml
+left to right direction 
+
+actor "Testeur" as pentester
+
+rectangle "Burpsuite TekUp Edition"{
+    usecase "Intercepter le trafic" as intercept
+        usecase "Activer le mode d'interception" as interceptmode
+        interceptmode <.. intercept : <<include>> 
+        usecase "Activer le mode filtrage" as filtermode
+            usecase "Bloquer les pop-ups" as popupblock
+                filtermode <.. popupblock : <<include>>
+
+            usecase "Bloquer les domaines interdits" as domainblock 
+                domainblock .right.> filtermode : <<include>>
+
+            usecase "Bloquer les réponses à l'aide d'une liste de mots" as responsewordblock 
+                filtermode <.. responsewordblock : <<include>> 
+    usecase "Afficher une requête/réponse HTTP/S" as display
+    pentester -- display
+    display ..> intercept : <<include>>
+    usecase "Modifier le contenu" as edit
+        display <.. edit : <<extends>>
+        usecase "bruteforcer un parametre" as  bruteforce
+        usecase "Modifier un parametre manuellement" as manualedit
+            edit <|- bruteforce
+            edit <|- manualedit
+            edit -- manualedit  #white
+            edit -- bruteforce  #white
+    usecase "Supprimer une requête/réponse HTTP/S" as drop
+    usecase "Enregistrer une requête/réponse HTTP/S" as save
+    usecase "Transmettre une requête/réponse HTTP/S" as send 
+    display <.. send : <<extends>>
+    display <.. drop: <<extends>>
+    display <.. save: <<extends>>
+
+}
+
+
+
+pentester -- interceptmode
+pentester -- filtermode 
+
+@enduml

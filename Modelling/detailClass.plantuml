@@ -1,0 +1,261 @@
+@startuml
+
+    '' Main Proxy Server
+    class ProxyServer {
+        - serverSocket: ServerSocket
+        - clientConnections: List~ClientHandler~
+        - configManager: ConfigManager
+        - certificateManager: CertificateManager
+        - logger: Logger
+        + start(port)
+        + handleConnection()
+        + stop()
+    }
+
+    '' Server Side (Facing Browser)
+    class ServerSide {
+        <<interface>>
+        + acceptBrowserConnection()
+        + performTLSHandshake()
+        + receiveRequest()
+        + sendResponse()
+    }
+
+    class ClientHandler {
+        - clientSocket: Socket
+        - serverHandler: ServerHandler
+        - requestParser: RequestParser
+        - responseBuilder: ResponseBuilder
+        - bufferManager: BufferManager
+        - tlsServer: TLSServer
+        + run()
+        + handleHTTPRequest()
+        + handleHTTPSRequest()
+    }
+
+    class TLSServer {
+        - sslContext: SSLContext
+        - certificateManager: CertificateManager
+        + performHandshake(socket)
+        + wrapSocket(socket)
+        + unwrapData(encryptedData)
+    }
+
+    class RequestParser {
+        - buffer: ByteBuffer
+        - rawRequest: String
+        + parseRequestLine()
+        + parseHeaders()
+        + parseBody()
+        + validateRequest()
+        + getHTTPRequest(): HTTPRequest
+    }
+
+    class HTTPRequest {
+        - method: String
+        - url: String
+        - version: String
+        - headers: Map
+        - body: String
+        + getMethod()
+        + getURL()
+        + getHeaders()
+        + getBody()
+    }
+
+    class ResponseBuilder {
+        - httpResponse: HTTPResponse
+        + buildResponseFromServer(rawResponse)
+        + encryptResponse(response)
+        + sendToClient(encryptedResponse)
+    }
+
+    class HTTPResponse {
+        - statusCode: int
+        - statusMessage: String
+        - version: String
+        - headers: Map
+        - body: String
+        + getStatusCode()
+        + getHeaders()
+        + getBody()
+    }
+
+    '' Client Side (Facing Website)
+    class ClientSide {
+        <<interface>>
+        + connectToServer()
+        + performTLSHandshake()
+        + sendRequest()
+        + receiveResponse()
+    }
+
+    class ServerHandler {
+        - serverSocket: Socket
+        - requestModifier: RequestModifier
+        - responseFilter: ResponseFilter
+        - bufferManager: BufferManager
+        - tlsClient: TLSClient
+        + connectToWebsite(host, port)
+        + sendRequestToServer()
+        + receiveResponseFromServer()
+    }
+
+    class TLSClient {
+        - sslContext: SSLContext
+        + performHandshake(socket, hostname)
+        + wrapSocket(socket)
+        + unwrapData(encryptedData)
+        + validateServerCertificate()
+    }
+
+    '' Supporting Components
+    class BufferManager {
+        - readBuffer: ByteBuffer
+        - writeBuffer: ByteBuffer
+        + readData(socket): byte[]
+        + reassemblePackets(): String
+        + detectEndOfMessage(): boolean
+        + handleChunkedEncoding()
+    }
+
+    class CertificateManager {
+        - rootCA: Certificate
+        - generatedCerts: Map
+        + generateFakeCertificate(domain): Certificate
+        + loadRootCA()
+        + getCertificate(domain): Certificate
+        + isCertificateValid(): boolean
+    }
+
+    class Certificate {
+        - domain: String
+        - publicKey: Key
+        - privateKey: Key
+        - expirationDate: Date
+        + sign()
+        + getDetails()
+    }
+
+    class RequestModifier {
+        - blacklistManager: BlacklistManager
+        + interceptRequest(request): HTTPRequest
+        + modifyRequest(request): HTTPRequest
+        + filterRequest(request): boolean
+    }
+
+    class ResponseFilter {
+        - blacklistManager: BlacklistManager
+        + interceptResponse(response): HTTPResponse
+        + filterResponse(response): boolean
+        + modifyResponse(response): HTTPResponse
+    }
+
+    class BlacklistManager {
+        - rules: List~BlacklistRule~
+        + loadBlacklist()
+        + addRule(rule)
+        + matches(content): boolean
+    }
+
+    class BlacklistRule {
+        - pattern: String
+        - ruleType: String
+        - action: String
+        + matches(content): boolean
+    }
+
+    class Logger {
+        - logs: List~LogEntry~
+        - storage: LogStorage
+        + logRequest(request)
+        + logResponse(response)
+        + logError(error)
+        + getLogs(): List
+    }
+
+    class LogEntry {
+        - timestamp: Date
+        - type: String
+        - source: String
+        - destination: String
+        - details: String
+    }
+
+    class LogStorage {
+        + saveLogs(logs)
+        + retrieveLogs(): List
+        + clearLogs()
+    }
+
+    class ConfigManager {
+        - config: Config
+        + loadConfig(filepath)
+        + getConfig(): Config
+        + updateConfig()
+    }
+
+    class Config {
+        - proxyPort: int
+        - blacklistPath: String
+        - certificatePath: String
+        - logPath: String
+        + getProxyPort()
+        + getBlacklistPath()
+    }
+
+    class ConnectionManager {
+        - timeout: int
+        - keepAliveEnabled: boolean
+        + setSocketTimeout()
+        + handleKeepAlive()
+        + closeConnection(socket)
+    }
+
+    class DNSResolver {
+        + resolveHost(hostname): String
+        + getHostFromURL(url): String
+    }
+
+    '' Relationships
+    ProxyServer --> ClientHandler
+    ProxyServer --> CertificateManager
+    ProxyServer --> ConfigManager
+    ProxyServer --> Logger
+    
+    ClientHandler --> TLSServer
+    ClientHandler --> RequestParser
+    ClientHandler --> ResponseBuilder
+    ClientHandler --> ServerHandler
+    ClientHandler --> BufferManager
+    ClientHandler --> ConnectionManager
+
+    ServerHandler --> TLSClient
+    ServerHandler --> RequestModifier
+    ServerHandler --> ResponseFilter
+    ServerHandler --> BufferManager
+    ServerHandler --> DNSResolver
+    ServerHandler --> ConnectionManager
+
+    RequestParser --> HTTPRequest
+    ResponseBuilder --> HTTPResponse
+
+    RequestModifier --> BlacklistManager
+    ResponseFilter --> BlacklistManager
+
+    TLSServer --> CertificateManager
+    TLSClient --> CertificateManager
+
+    Logger --> LogEntry
+    Logger --> LogStorage
+
+    BlacklistManager --> BlacklistRule
+
+    ConfigManager --> Config
+
+    CertificateManager --> Certificate
+
+    ClientHandler --|> ServerSide
+    ServerHandler --|> ClientSide
+
+@enduml

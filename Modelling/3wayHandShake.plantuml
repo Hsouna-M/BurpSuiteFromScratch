@@ -1,0 +1,13 @@
+@startuml
+
+participant "Client" as B
+participant "Server" as P
+
+activate P
+activate B
+B -> P : Syn
+
+B <- P : Syn/Ack 
+B -> P : Ack 
+
+@enduml

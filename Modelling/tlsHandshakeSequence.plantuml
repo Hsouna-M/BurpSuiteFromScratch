@@ -1,0 +1,22 @@
+@startuml
+title TLS 1.2 Handshake Sequence Diagram
+
+participant "browser" as B
+participant "Proxy" as P
+
+B -> P: BHello
+
+P -> B: PHello
+
+P -> B: Certificate
+P -> B: PKeyExchange 
+P -> B: PHelloDone
+
+B -> P: BKeyExchange
+B -> P: ChangeCipherSpec
+B -> P: Finished
+
+P -> B: ChangeCipherSpec
+P -> B: Finished
+
+@enduml

@@ -1,0 +1,35 @@
+@startuml
+title Interception d'une requête HTTPS
+
+actor testeur 
+participant Navigateur as B
+participant Proxy as P #LightBlue
+
+autonumber "0. "
+
+activate testeur
+activate P
+activate B
+
+testeur -> P : activer le mode interception
+
+testeur <<-- P: écoute en cours
+
+testeur -> B:  chercher https://www.google.com/search?q=tek-up  
+' note : is this a synchronous or an asynchronous i dont even know 
+
+ref over B, P : Tcp Handshake
+ref over B, P : SSl Handshake
+
+
+B -> P: GET /search?q=tek-up  
+
+P ->> P : Déchiffrer la requete
+
+P -> testeur : requête capturée
+
+' note 1 : 
+' this is a synchronous messge because the proxy will need somthing to do with the request of the browser wich the use will decide 
+' did not put any option under it because lots of option are possible after this point ( delete , modify , forward )
+
+@enduml
