@@ -1,15 +1,15 @@
 @startuml
 title TLS 1.2 Handshake Sequence Diagram
 
-actor B
-actor P
+participant "browser" as B
+participant "Proxy" as P
 
 B -> P: BHello
 
 P -> B: PHello
 
 P -> B: Certificate
-P -> B: PKeyExchange (if needed)
+P -> B: PKeyExchange 
 P -> B: PHelloDone
 
 B -> P: BKeyExchange

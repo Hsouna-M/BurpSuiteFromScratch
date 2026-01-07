@@ -7,38 +7,29 @@ participant Proxy as P #LightBlue
 
 autonumber "0. "
 
+activate testeur
+activate P
+activate B
+
 testeur -> P : activer le mode interception
 
-activate P
-testeur <-- P: écoute en cours
+testeur <<-- P: écoute en cours
 
-activate B
-testeur -> B:  url : https://www.google.com/search?q=tek-up  
-B -> P : Syn
-B <- P : Syn/Ack 
-B -> P : Ack 
+testeur -> B:  chercher https://www.google.com/search?q=tek-up  
+' note : is this a synchronous or an asynchronous i dont even know 
 
-B -> P: ClientHello
-P -> B: ServerHello
+ref over B, P : Tcp Handshake
+ref over B, P : SSl Handshake
 
-P -> B: Certificat
-P -> B: Échange de clés serveur 
-P -> B: ServerHelloDone
 
-B -> P: Échange de clés client
-B -> P: ChangeCipherSpec
-B -> P: Finished
+B -> P: GET /search?q=tek-up  
 
-P -> B: ChangeCipherSpec
-P -> B: Finished
+P ->> P : Déchiffrer la requete
 
-' toutes ces opérations sont synchrones car il n'y a pas de valeur de retour — les paquets eux-mêmes constituent les messages
+P -> testeur : requête capturée
 
-B -> P: GET : https://www.google.com/search?q=tek-up  
-
-P -> P : Déchiffrement et sauvegarde de la requête 
-activate P
-P --> testeur : Nouvelle requête capturée
-deactivate P
+' note 1 : 
+' this is a synchronous messge because the proxy will need somthing to do with the request of the browser wich the use will decide 
+' did not put any option under it because lots of option are possible after this point ( delete , modify , forward )
 
 @enduml

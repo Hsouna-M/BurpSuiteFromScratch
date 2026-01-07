@@ -1,0 +1,98 @@
+@startuml
+left to right direction 
+
+    class ProxyServer {
+        - port: int 
+        - host: string 
+        + démarrer()
+        + arrêter()
+    }
+
+    interface ParserHTTP{
+        + analyserRequête()
+        + analyserRéponse()
+    }
+
+    class BrowserHandler {
+        - port: int 
+        - host: string 
+        + accepterConnexion()
+        + recevoirRequête()
+        + envoyerRéponse()
+    }
+
+    class WebsiteHandler {
+        - port: int
+        - host: string 
+        + connecterSiteWeb()
+        + envoyerRequête()
+        + recevoirRéponse()
+    }
+
+    abstract class TLSManager {
+        - suiteChiffrement : list 
+        - clés : dict
+        + chargerCertificat()
+        + effectuerHandshake()
+        + chiffrer()
+        + déchiffrer()
+    }
+
+
+
+
+    class HTTPRequest {
+        - méthode: String
+        - url: String
+        - en-têtes: dict 
+        - corps: dict 
+    }
+
+    class HTTPResponse {
+        - codeStatut: int
+        - en-têtes: dict 
+        - corps: dict 
+    }
+
+    class FilterManager {
+        - listeNoire: string [] 
+        + vérifierRequête()
+        + vérifierRéponse()
+        + supprimer()
+    }
+
+
+    class dbHandler {
+        - redisDb : redis 
+        + enregistrerRequête()
+        + enregistrerRéponse()
+        + lireRequête()
+        + lireRéponse()
+        + lireTout()
+    }
+
+
+    ProxyServer "1" *- "1" dbHandler 
+    ProxyServer "1" *- "1" FilterManager
+    ProxyServer "1" *---- "1" BrowserHandler 
+    ProxyServer "1" *---- "1" WebsiteHandler 
+
+
+    TLSManager "1" ----* "1" BrowserHandler 
+    BrowserHandler "0..*" ----- "1" HTTPRequest : traiter
+    BrowserHandler "0..*" ----- "1" HTTPResponse : traiter
+    BrowserHandler "1" ..|> "1" ParserHTTP
+
+    TLSManager "1"  ----* "1" WebsiteHandler 
+    WebsiteHandler "0..*" ----- "1" HTTPResponse : traiter 
+    WebsiteHandler "0..*" ------ "1" HTTPRequest : traiter  
+    WebsiteHandler "1"  ..|> "1" ParserHTTP
+
+    FilterManager "0..*" ------ "0..1" HTTPRequest : filtrer
+    FilterManager "0..*" ----- "0..1" HTTPResponse : filtrer
+
+
+
+
+
+@enduml

@@ -7,45 +7,29 @@ participant Proxy as P #LightBlue
 
 autonumber "0. "
 
+activate testeur
+activate P
+activate B
+
 testeur -> P : activer le mode filtrage
 
-activate P
-testeur <-- P: écoute en cours
+testeur <<-- P: écoute en cours
 
-activate B
-testeur -> B:  url : https://www.Prohibited.Domain/Page  
-B -> P : Syn
-B <- P : Syn/Ack 
-B -> P : Ack 
+testeur -> B:  chercher https://www.Prohibited.Domain/Page  
 
-B -> P: ClientHello
-P -> B: ServerHello
+ref over B,P: tcp Handshake
 
-P -> B: Certificat
-P -> B: Échange de clés serveur (si nécessaire)
-P -> B: ServerHelloDone
+ref over B,P: SSL Handshake
 
-B -> P: Échange de clés client
-B -> P: ChangeCipherSpec
-B -> P: Finished
 
-P -> B: ChangeCipherSpec
-P -> B: Finished
 
-' toutes ces opérations sont synchrones car il n'y a pas de valeur de retour — les paquets eux-mêmes constituent les messages
+B -> P: GET /Page  HTTP/v.v
 
-B -> P: GET : https://www.Prohibited.Domain/Page  
+P ->> P : Déchiffrement de la requête   
+P ->> P : vérifier {Request.Header.Host }
 
-activate P
-P -> P : Déchiffrement de la requête
-
-P -> P : vérifier si {Request.Header.Host }   figure dans la liste des domaines interdits 
-alt host: prohibited.domain
-    P -> P : abandonner la requête 
-    P --> B : Requête abandonnée
-    deactivate P
-else autorisé 
-    ref over P : Transmettre la requette Https vers le serveur  
-end
+    P ->> P : abandonner la requête 
+    P -->> B : HTTP/1.1 403 /n Content-Type: application/html /n/n<h1>accès refusé<h1>
+    B -->>  testeur  : accès refusé
 
 @enduml
