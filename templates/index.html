@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MITM Proxy Inspector</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; }
+        .container { display: flex; height: 100vh; }
+        .sidebar { width: 30%; border-right: 1px solid #444; overflow-y: auto; }
+        .main { width: 70%; display: flex; flex-direction: column; }
+        .request-item {
+            padding: 10px;
+            border-bottom: 1px solid #444;
+            cursor: pointer;
+            background: #252526;
+        }
+        .request-item:hover { background: #2d2d30; }
+        .request-item.selected { background: #094771; }
+        .details { padding: 20px; overflow-y: auto; flex: 1; }
+        .controls { padding: 20px; border-top: 1px solid #444; display: flex; gap: 10px; }
+        button {
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .allow { background: #4ec9b0; color: black; }
+        .block { background: #f48771; color: black; }
+        .modify { background: #569cd6; color: white; }
+        pre { background: #1e1e1e; padding: 15px; overflow-x: auto; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar" id="sidebar">
+            <!-- Requests listed here -->
+        </div>
+        <div class="main">
+            <div class="details" id="details">
+                <p>Select a request to inspect</p>
+            </div>
+            <div class="controls">
+                <button class="allow" onclick="allowRequest()">Allow</button>
+                <button class="block" onclick="blockRequest()">Block</button>
+                <button class="modify" onclick="modifyRequest()">Modify</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentRequestId = null;
+
+        function refreshRequests() {
+            fetch('/api/requests')
+                .then(r => r.json())
+                .then(requests => {
+                    const sidebar = document.getElementById('sidebar');
+                    sidebar.innerHTML = '';
+                    requests.forEach(req => {
+                        const div = document.createElement('div');
+                        div.className = 'request-item';
+                        div.textContent = `${req.method} ${req.hostname}${req.path}`;
+                        div.onclick = () => selectRequest(req.id);
+                        sidebar.appendChild(div);
+                    });
+                });
+        }
+
+        function selectRequest(id) {
+            currentRequestId = id;
+            fetch(`/api/requests/${id}`)
+                .then(r => r.json())
+                .then(req => {
+                    const details = document.getElementById('details');
+                    details.innerHTML = `
+                        <h3>${req.method} ${req.hostname}${req.path}</h3>
+                        <h4>Headers:</h4>
+                        <pre>${JSON.stringify(req.headers, null, 2)}</pre>
+                        <h4>Body:</h4>
+                        <pre>${req.body}</pre>
+                    `;
+                });
+        }
+
+        function allowRequest() {
+            if (!currentRequestId) return;
+            fetch(`/api/requests/${currentRequestId}/allow`, { method: 'POST' })
+                .then(() => refreshRequests());
+        }
+
+        function blockRequest() {
+            if (!currentRequestId) return;
+            fetch(`/api/requests/${currentRequestId}/block`, { method: 'POST' })
+                .then(() => refreshRequests());
+        }
+
+        function modifyRequest() {
+            const newBody = prompt('Enter modified body:');
+            if (!newBody) return;
+            fetch(`/api/requests/${currentRequestId}/modify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ body: newBody })
+            }).then(() => refreshRequests());
+        }
+
+        // Refresh requests every 1 second
+        setInterval(refreshRequests, 1000);
+        refreshRequests();
+    </script>
+</body>
+</html>
