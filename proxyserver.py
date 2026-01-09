@@ -261,6 +261,15 @@ class MITMProxyServer:
                     if 'body' in req_data:
                         body = req_data['body']
                 
+                # Remove Accept-Encoding to avoid compressed responses we can't handle (like brotli)
+                # requests will add its own acceptable encodings (gzip, deflate) and decode automatically
+                if 'Accept-Encoding' in headers:
+                    del headers['Accept-Encoding']
+                # Case-insensitive check just in case
+                for k in list(headers.keys()):
+                    if k.lower() == 'accept-encoding':
+                        del headers[k]
+
                 print(f"[!] Request allowed - Forwarding to {hostname}...")
                 
                 try:
@@ -438,6 +447,13 @@ class MITMProxyServer:
                     headers = req_data['headers']
                     if 'body' in req_data:
                         body = req_data['body']
+
+                # Remove Accept-Encoding to avoid compressed responses we can't handle (like brotli)
+                if 'Accept-Encoding' in headers:
+                    del headers['Accept-Encoding']
+                for k in list(headers.keys()):
+                    if k.lower() == 'accept-encoding':
+                        del headers[k]
 
                 print(f"[!] Request allowed - Forwarding to {hostname}...")
                 
