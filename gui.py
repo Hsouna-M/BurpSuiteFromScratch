@@ -58,6 +58,20 @@ class ProxyGUI:
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
         
+        @self.app.route('/api/responses/<request_id>')
+        def get_response(request_id):
+            """Get response details from proxy API"""
+            try:
+                response = requests.get(
+                    f'{self.proxy_api_url}/api/responses/{request_id}',
+                    timeout=5
+                )
+                if response.status_code == 404:
+                     return jsonify({'error': 'Response not found'}), 404
+                return jsonify(response.json())
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
         # Request actions
         @self.app.route('/api/requests/<request_id>/allow', methods=['POST'])
         def allow_request(request_id):

@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
+import requests
 
 from certificate_authority import CertificateAuthority
 from redis_storage import RedisStorage
@@ -121,7 +122,7 @@ class MITMProxyServer:
             if RequestInterceptor.is_connect_request(request_line):
                 self._handle_connect_request(client_socket, request_line)
             else:
-                self._handle_http_request(client_socket, request_line)
+                self._handle_http_request(client_socket, request_line, data)
         
         except Exception as e:
             print(f"[-] Error handling client: {e}")
@@ -230,31 +231,82 @@ class MITMProxyServer:
             print(f"[*] Waiting for GUI decision...")
             
             # Wait for GUI decision (max 30 seconds)
-            # max_wait = 600 
-            # waited = 0
-            # status = 'pending'
+            # Wait for GUI decision (max 60 seconds)
+            max_wait = 60
+            waited = 0
+            status = 'pending'
             
-            # while waited < max_wait:
-            #     status = self.storage.get_request_status(request_id)
-            #     if status != 'pending':
-            #         print(f"[+] Request status: {status}")
-            #         break
-            #     time.sleep(0.5)
-            #     waited += 0.5
+            while waited < max_wait:
+                status = self.storage.get_request_status(request_id)
+                if status != 'pending':
+                    print(f"[+] Request status: {status}")
+                    break
+                time.sleep(0.5)
+                waited += 0.5
             
-            # # Handle based on status
-            # if status == 'blocked':
-            #     print(f"[!] Request blocked by user")
-            #     ssl_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
-            # elif status == 'allowed':
-            #     print(f"[!] Request allowed (forwarding not implemented yet)")
-            #     ssl_socket.send(b"HTTP/1.1 200 OK\r\n\r\nAllowed by proxy")
-            # elif status == 'modified':
-            #     print(f"[!] Request modified (forwarding not implemented yet)")
-            #     ssl_socket.send(b"HTTP/1.1 200 OK\r\n\r\nModified by proxy")
-            # else:
-            #     print(f"[-] Timeout waiting for decision")
-            #     ssl_socket.send(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
+            # Handle based on status
+            if status == 'blocked':
+                print(f"[!] Request blocked by user")
+                ssl_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+            
+            elif status == 'allowed':
+                print(f"[!] Request allowed - Forwarding to {hostname}...")
+                
+                try:
+                    # Construct URL
+                    url = f"https://{hostname}{path}"
+                    
+                    # Forward request using requests library
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        verify=False,  # Ignore SSL verify for upstream (optional, but often needed in lab/proxy setups)
+                        allow_redirects=False # We want to capture the 3xx response, not follow it
+                    )
+                    
+                    print(f"[+] Received response from server: {response.status_code}")
+                    
+                    # Save response to Redis
+                    self.storage.save_response(
+                        request_id=request_id,
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        body=response.text # Or response.content if binary is critical
+                    )
+                    
+                    # Send response back to client
+                    # Construct status line
+                    status_line = f"HTTP/1.1 {response.status_code} {response.reason}\r\n"
+                    ssl_socket.send(status_line.encode())
+                    
+                    # Send headers
+                    for key, value in response.headers.items():
+                        # Skip transfer-encoding as we handle body explicitly
+                        if key.lower() == 'transfer-encoding':
+                            continue
+                        header_line = f"{key}: {value}\r\n"
+                        ssl_socket.send(header_line.encode())
+                    
+                    ssl_socket.send(b"\r\n")
+                    
+                    # Send body
+                    ssl_socket.send(response.content)
+                    
+                except Exception as e:
+                    print(f"[-] Error forwarding HTTPS request: {e}")
+                    ssl_socket.send(b"HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error")
+                    
+            elif status == 'modified':
+                # Similar to allowed but use modified body/headers if implemented
+                print(f"[!] Request modified (using allowed path for now)")
+                # For now fallthrough to blocked or implement same as allowed but with modified data
+                ssl_socket.send(b"HTTP/1.1 501 Not Implemented\r\n\r\nModified requests not yet implemented")
+                
+            else:
+                print(f"[-] Timeout waiting for decision")
+                ssl_socket.send(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
         
         except Exception as e:
             print(f"[-] Error reading encrypted data: {e}")
@@ -264,20 +316,132 @@ class MITMProxyServer:
             except:
                 pass
     
-    def _handle_http_request(self, client_socket: socket.socket, request_line: str) -> None:
+    def _handle_http_request(self, client_socket: socket.socket, request_line: str, initial_data: bytes) -> None:
         """
         Handle plain HTTP request (non-HTTPS)
         
         Args:
             client_socket: Client socket
             request_line: HTTP request line
+            initial_data: Initial data received from client
         """
         try:
-            print(f"[+] HTTP request received")
-            client_socket.send(
-                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"
-                b"Hello from MITM Proxy"
+            # Decode request
+            try:
+                request_str = initial_data.decode('utf-8', errors='ignore')
+            except Exception:
+                request_str = "[Binary data]"
+            
+            print(f"[+] HTTP request received:\n{request_str[:200]}")
+            
+            # Parse request
+            parsed = RequestInterceptor.parse_request(request_str)
+            method = parsed['method']
+            path = parsed['path']
+            headers = parsed['headers']
+            body = parsed['body']
+            
+            # Extract hostname from Host header
+            hostname = headers.get('Host', '')
+            if not hostname:
+                 # Fallback if full URL in path
+                 if '://' in path:
+                     hostname = path.split('://')[1].split('/')[0]
+            
+            # Create unique request ID
+            request_id = str(uuid.uuid4())
+            timestamp = datetime.now().isoformat()
+            
+            # Store to Redis
+            self.storage.save_request(
+                request_id=request_id,
+                hostname=hostname,
+                method=method,
+                path=path,
+                headers=headers,
+                body=body,
+                timestamp=timestamp
             )
+            
+            print(f"[+] Request {request_id} saved to Redis")
+            print(f"[*] Waiting for GUI decision...")
+            
+            # Wait for GUI decision (max 60 seconds)
+            max_wait = 60
+            waited = 0
+            status = 'pending'
+            
+            while waited < max_wait:
+                status = self.storage.get_request_status(request_id)
+                if status != 'pending':
+                    print(f"[+] Request status: {status}")
+                    break
+                time.sleep(0.5)
+                waited += 0.5
+                
+            # Handle based on status
+            if status == 'blocked':
+                print(f"[!] Request blocked by user")
+                client_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+                
+            elif status == 'allowed':
+                print(f"[!] Request allowed - Forwarding to {hostname}...")
+                
+                try:
+                    # Construct URL. Handle if path is already full URL
+                    if path.startswith('http://'):
+                         url = path
+                    else:
+                         # Ensure we don't duplicate slash if path starts with /
+                         clean_path = path if path.startswith('/') else f"/{path}"
+                         url = f"http://{hostname}{clean_path}"
+                    
+                    # Forward request using requests library
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        allow_redirects=False
+                    )
+                    
+                    print(f"[+] Received response from server: {response.status_code}")
+                    
+                    # Save response to Redis
+                    self.storage.save_response(
+                        request_id=request_id,
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        body=response.text
+                    )
+                    
+                    # Send response back to client
+                    status_line = f"HTTP/1.1 {response.status_code} {response.reason}\r\n"
+                    client_socket.send(status_line.encode())
+                    
+                    # Send headers
+                    for key, value in response.headers.items():
+                        if key.lower() == 'transfer-encoding':
+                            continue
+                        header_line = f"{key}: {value}\r\n"
+                        client_socket.send(header_line.encode())
+                    
+                    client_socket.send(b"\r\n")
+                    
+                    # Send body
+                    client_socket.send(response.content)
+                    
+                except Exception as e:
+                    print(f"[-] Error forwarding HTTP request: {e}")
+                    client_socket.send(b"HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error")
+                    
+            elif status == 'modified':
+                 client_socket.send(b"HTTP/1.1 501 Not Implemented\r\n\r\nModified requests not yet implemented")
+                 
+            else:
+                 print(f"[-] Timeout waiting for decision")
+                 client_socket.send(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
+
         except Exception as e:
             print(f"[-] Error handling HTTP request: {e}")
 

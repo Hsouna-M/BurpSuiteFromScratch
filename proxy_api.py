@@ -69,11 +69,29 @@ class ProxyAPI:
                 'timestamp': req['timestamp'],
             }), 200
         
-        # Decision endpoints should forward this is where the work happend
+        @self.app.route('/api/responses/<request_id>', methods=['GET'])
+        def get_request_response(request_id: str) -> Tuple[Dict[str, Any], int]:
+            """Get request response details"""
+            resp = self.storage.get_response(request_id)
+            
+            if not resp:
+                return jsonify({'error': 'Response not found'}), 404
+            
+            return jsonify({
+                'id': request_id,
+                'status_code': resp['status_code'],
+                'headers': resp['headers'],
+                'body': resp['body']
+            }), 200        
         @self.app.route('/api/requests/<request_id>/allow', methods=['POST'])
         def allow_request(request_id: str) -> Tuple[Dict[str, Any], int]:
             """Mark request as allowed (to be forwarded)"""
-            return
+            success = self.storage.update_request_status(request_id, 'allowed')
+            if success:
+                print(f"[+] Request {request_id} is ALLOWED")
+                return jsonify({'status': 'allowed'}), 200
+            else:
+                return jsonify({'error': 'Failed to update status'}), 500
         
         @self.app.route('/api/requests/<request_id>/block', methods=['POST'])
         def block_request(request_id: str) -> Tuple[Dict[str, Any], int]:

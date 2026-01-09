@@ -80,6 +80,9 @@ class RedisStorage:
             # Set expiration (1 hour)
             self.client.expire(f"request:{request_id}", 3600)
             
+            # Set initial status
+            self.client.hset(f"request:{request_id}", "status", "pending")
+            
             return True
         except Exception as e:
             print(f"[-] Error saving request to Redis: {e}")
@@ -127,6 +130,92 @@ class RedisStorage:
             return None
     
     
+    def update_request_status(self, request_id: str, status: str) -> bool:
+        """
+        Update request status (pending, allowed, blocked, modified)
+        
+        Args:
+            request_id: The request ID
+            status: New status
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.client.hset(f"request:{request_id}", "status", status)
+            return True
+        except Exception as e:
+            print(f"[-] Error updating status: {e}")
+            return False
+
+    def get_request_status(self, request_id: str) -> str:
+        """
+        Get current request status
+        
+        Args:
+            request_id: The request ID
+            
+        Returns:
+            Status string or 'unknown'
+        """
+        try:
+            status = self.client.hget(f"request:{request_id}", "status")
+            return status if status else 'unknown'
+        except Exception as e:
+            print(f"[-] Error getting status: {e}")
+            return 'error'
+
+    def save_response(self, request_id: str, status_code: int, headers: Dict[str, str], body: str) -> bool:
+        """
+        Save response for a request
+        
+        Args:
+            request_id: The request ID
+            status_code: Response status code
+            headers: Response headers
+            body: Response body (hex encoded or string)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            response_data = {
+                'status_code': status_code,
+                'headers': json.dumps(headers),
+                'body': body
+            }
+            self.client.hset(f"response:{request_id}", mapping=response_data)
+            self.client.expire(f"response:{request_id}", 3600)
+            return True
+        except Exception as e:
+            print(f"[-] Error saving response: {e}")
+            return False
+            
+    def get_response(self, request_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get response for a request
+        
+        Args:
+            request_id: The request ID
+            
+        Returns:
+            Dictionary with response data or None
+        """
+        try:
+            response_data = self.client.hgetall(f"response:{request_id}")
+            if not response_data:
+                return None
+                
+            try:
+                response_data['headers'] = json.loads(response_data['headers'])
+            except:
+                response_data['headers'] = {}
+                
+            return response_data
+        except Exception as e:
+            print(f"[-] Error getting response: {e}")
+            return None
+
     def set_modified_body(self, request_id: str, modified_body: str) -> bool:
         """
         Save modified request body

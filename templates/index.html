@@ -16,8 +16,23 @@
         }
         .request-item:hover { background: #2d2d30; }
         .request-item.selected { background: #094771; }
-        .details { padding: 20px; overflow-y: auto; flex: 1; }
-        .controls { padding: 20px; border-top: 1px solid #444; display: flex; gap: 10px; }
+        
+        /* Tabs */
+        .tabs { display: flex; border-bottom: 1px solid #444; background: #252526; }
+        .tab { 
+            padding: 10px 20px; 
+            cursor: pointer; 
+            border-right: 1px solid #444;
+            background: #2d2d30;
+        }
+        .tab:hover { background: #3e3e42; }
+        .tab.active { background: #1e1e1e; border-bottom: 1px solid #1e1e1e; }
+        
+        .content-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .details { padding: 20px; overflow-y: auto; flex: 1; display: none; }
+        .details.active { display: block; }
+        
+        .controls { padding: 20px; border-top: 1px solid #444; display: flex; gap: 10px; background: #252526; }
         button {
             padding: 10px 20px;
             border: none;
@@ -28,7 +43,17 @@
         .allow { background: #4ec9b0; color: black; }
         .block { background: #f48771; color: black; }
         .modify { background: #569cd6; color: white; }
-        pre { background: #1e1e1e; padding: 15px; overflow-x: auto; border-radius: 4px; }
+        pre { background: #1e1e1e; padding: 15px; overflow-x: auto; border-radius: 4px; border: 1px solid #333; }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .status-badge.pending { background: #dcdcaa; color: black; }
+        .status-badge.allowed { background: #4ec9b0; color: black; }
+        .status-badge.blocked { background: #f48771; color: black; }
     </style>
 </head>
 <body>
@@ -37,9 +62,20 @@
             <!-- Requests listed here -->
         </div>
         <div class="main">
-            <div class="details" id="details">
-                <p>Select a request to inspect</p>
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('request')">Request</div>
+                <div class="tab" onclick="switchTab('response')">Response</div>
             </div>
+            
+            <div class="content-area">
+                <div class="details active" id="request-details">
+                    <p style="padding: 20px; color: #888;">Select a request to inspect</p>
+                </div>
+                <div class="details" id="response-details">
+                    <p style="padding: 20px; color: #888;">Select a request or wait for response...</p>
+                </div>
+            </div>
+            
             <div class="controls">
                 <button class="allow" onclick="allowRequest()">Allow</button>
                 <button class="block" onclick="blockRequest()">Block</button>
@@ -51,34 +87,97 @@
     <script>
         let currentRequestId = null;
 
+        function switchTab(tabName) {
+            // Update tabs
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update content
+            document.querySelectorAll('.details').forEach(d => d.classList.remove('active'));
+            document.getElementById(`${tabName}-details`).classList.add('active');
+            
+            // If switching to response, try to fetch it
+            if (tabName === 'response' && currentRequestId) {
+                fetchResponse(currentRequestId);
+            }
+        }
+
         function refreshRequests() {
             fetch('/api/requests')
                 .then(r => r.json())
                 .then(requests => {
                     const sidebar = document.getElementById('sidebar');
+                    // Store current selection to restore active class if needed
+                    const currentSelection = document.querySelector('.request-item.selected');
+                    const selectedId = currentSelection ? currentRequestId : null;
+                    
                     sidebar.innerHTML = '';
                     requests.forEach(req => {
                         const div = document.createElement('div');
                         div.className = 'request-item';
+                        if (req.id === selectedId) div.classList.add('selected');
                         div.textContent = `${req.method} ${req.hostname}${req.path}`;
-                        div.onclick = () => selectRequest(req.id);
+                        div.onclick = () => selectRequest(req.id, div);
                         sidebar.appendChild(div);
                     });
                 });
         }
 
-        function selectRequest(id) {
+        function selectRequest(id, element) {
             currentRequestId = id;
+            
+            // Update UI selection
+            document.querySelectorAll('.request-item').forEach(i => i.classList.remove('selected'));
+            element.classList.add('selected');
+            
+            // Fetch request details
             fetch(`/api/requests/${id}`)
                 .then(r => r.json())
                 .then(req => {
-                    const details = document.getElementById('details');
+                    const details = document.getElementById('request-details');
                     details.innerHTML = `
                         <h3>${req.method} ${req.hostname}${req.path}</h3>
                         <h4>Headers:</h4>
                         <pre>${JSON.stringify(req.headers, null, 2)}</pre>
                         <h4>Body:</h4>
-                        <pre>${req.body}</pre>
+                        <pre>${req.body ? req.body.replace(/</g, '&lt;') : ''}</pre>
+                    `;
+                    
+                    // Clear response view initially when selecting new request
+                    document.getElementById('response-details').innerHTML = '<p style="padding: 20px; color: #888;">Fetching response status...</p>';
+                    fetchResponse(id);
+                });
+        }
+        
+        function fetchResponse(id) {
+            fetch(`/api/responses/${id}`)
+                .then(r => {
+                    if (r.status === 404) {
+                        document.getElementById('response-details').innerHTML = '<p style="padding: 20px; color: #dcdcaa;">Response pending or not available yet. (Allow the request to fetch)</p>';
+                        return null;
+                    }
+                    return r.json();
+                })
+                .then(resp => {
+                    if (!resp) return;
+                    
+                    const details = document.getElementById('response-details');
+                    
+                    // Format body if it looks like JSON
+                    let bodyDisplay = resp.body;
+                    try {
+                        const jsonBody = JSON.parse(resp.body);
+                        bodyDisplay = JSON.stringify(jsonBody, null, 2);
+                    } catch(e) {}
+                    
+                    details.innerHTML = `
+                        <h3 style="color: ${resp.status_code >= 200 && resp.status_code < 300 ? '#4ec9b0' : '#f48771'}">
+                            Status: ${resp.status_code}
+                        </h3>
+                        <h4>Headers:</h4>
+                        <pre>${JSON.stringify(resp.headers, null, 2)}</pre>
+                        <h4>Body:</h4>
+                        <pre>${bodyDisplay ? bodyDisplay.replace(/</g, '&lt;') : ''}</pre>
                     `;
                 });
         }
@@ -86,7 +185,14 @@
         function allowRequest() {
             if (!currentRequestId) return;
             fetch(`/api/requests/${currentRequestId}/allow`, { method: 'POST' })
-                .then(() => refreshRequests());
+                .then(() => {
+                    // Switch to response tab to see the result
+                    setTimeout(() => {
+                        const tabs = document.querySelectorAll('.tab');
+                        if (tabs[1]) tabs[1].click();
+                        fetchResponse(currentRequestId);
+                    }, 1000); 
+                });
         }
 
         function blockRequest() {
@@ -105,8 +211,8 @@
             }).then(() => refreshRequests());
         }
 
-        // Refresh requests every 1 second
-        setInterval(refreshRequests, 1000);
+        // Refresh requests every 2 seconds
+        setInterval(refreshRequests, 2000);
         refreshRequests();
     </script>
 </body>
