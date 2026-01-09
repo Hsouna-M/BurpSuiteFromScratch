@@ -209,6 +209,7 @@ class MITMProxyServer:
             method = parsed['method']
             path = parsed['path']
             headers = parsed['headers']
+            body = parsed['body']
             
             # Create unique request ID
             request_id = str(uuid.uuid4())
@@ -221,7 +222,7 @@ class MITMProxyServer:
                 method=method,
                 path=path,
                 headers=headers,
-                body=encrypted_data.hex(),
+                body=body,
                 timestamp=timestamp
             )
             
@@ -229,31 +230,31 @@ class MITMProxyServer:
             print(f"[*] Waiting for GUI decision...")
             
             # Wait for GUI decision (max 30 seconds)
-            max_wait = 600 
-            waited = 0
-            status = 'pending'
+            # max_wait = 600 
+            # waited = 0
+            # status = 'pending'
             
-            while waited < max_wait:
-                status = self.storage.get_request_status(request_id)
-                if status != 'pending':
-                    print(f"[+] Request status: {status}")
-                    break
-                time.sleep(0.5)
-                waited += 0.5
+            # while waited < max_wait:
+            #     status = self.storage.get_request_status(request_id)
+            #     if status != 'pending':
+            #         print(f"[+] Request status: {status}")
+            #         break
+            #     time.sleep(0.5)
+            #     waited += 0.5
             
-            # Handle based on status
-            if status == 'blocked':
-                print(f"[!] Request blocked by user")
-                ssl_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
-            elif status == 'allowed':
-                print(f"[!] Request allowed (forwarding not implemented yet)")
-                ssl_socket.send(b"HTTP/1.1 200 OK\r\n\r\nAllowed by proxy")
-            elif status == 'modified':
-                print(f"[!] Request modified (forwarding not implemented yet)")
-                ssl_socket.send(b"HTTP/1.1 200 OK\r\n\r\nModified by proxy")
-            else:
-                print(f"[-] Timeout waiting for decision")
-                ssl_socket.send(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
+            # # Handle based on status
+            # if status == 'blocked':
+            #     print(f"[!] Request blocked by user")
+            #     ssl_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+            # elif status == 'allowed':
+            #     print(f"[!] Request allowed (forwarding not implemented yet)")
+            #     ssl_socket.send(b"HTTP/1.1 200 OK\r\n\r\nAllowed by proxy")
+            # elif status == 'modified':
+            #     print(f"[!] Request modified (forwarding not implemented yet)")
+            #     ssl_socket.send(b"HTTP/1.1 200 OK\r\n\r\nModified by proxy")
+            # else:
+            #     print(f"[-] Timeout waiting for decision")
+            #     ssl_socket.send(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
         
         except Exception as e:
             print(f"[-] Error reading encrypted data: {e}")

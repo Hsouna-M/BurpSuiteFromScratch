@@ -69,7 +69,6 @@ class RedisStorage:
                 'headers': json.dumps(headers),
                 'body': body,
                 'timestamp': timestamp,
-                'status': 'pending'
             }
             
             # Store request as hash
@@ -127,40 +126,6 @@ class RedisStorage:
             print(f"[-] Error retrieving request: {e}")
             return None
     
-    def get_request_status(self, request_id: str) -> Optional[str]:
-        """
-        Get request status
-        
-        Args:
-            request_id: The request ID
-            
-        Returns:
-            Status string (pending, allowed, blocked, modified) or None
-        """
-        try:
-            status = self.client.hget(f"request:{request_id}", "status")
-            return status
-        except Exception as e:
-            print(f"[-] Error getting request status: {e}")
-            return None
-    
-    def update_request_status(self, request_id: str, status: str) -> bool:
-        """
-        Update request status
-        
-        Args:
-            request_id: The request ID
-            status: New status (pending, allowed, blocked, modified)
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            self.client.hset(f"request:{request_id}", "status", status)
-            return True
-        except Exception as e:
-            print(f"[-] Error updating request status: {e}")
-            return False
     
     def set_modified_body(self, request_id: str, modified_body: str) -> bool:
         """
