@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
+import requests
 
 from certificate_authority import CertificateAuthority
 from redis_storage import RedisStorage
@@ -121,7 +122,7 @@ class MITMProxyServer:
             if RequestInterceptor.is_connect_request(request_line):
                 self._handle_connect_request(client_socket, request_line)
             else:
-                self._handle_http_request(client_socket, request_line)
+                self._handle_http_request(client_socket, request_line, data)
         
         except Exception as e:
             print(f"[-] Error handling client: {e}")
@@ -209,6 +210,70 @@ class MITMProxyServer:
             method = parsed['method']
             path = parsed['path']
             headers = parsed['headers']
+            body = parsed['body']
+            
+            # -----------------------------------------------------------------
+            # Filter Mode Check
+            # -----------------------------------------------------------------
+            if self.storage.get_proxy_mode() == 'filter':
+                # Check Blocked Domains
+                blocked_domains = self.storage.get_blocked_domains()
+                if hostname in blocked_domains:
+                     print(f"[!] Request to {hostname} BLOCKED by Filter Mode")
+                     html_content = "<html><body><h1>Access Denied</h1><p>The domain <b>{}</b> is blocked by the proxy.</p></body></html>".format(hostname)
+                     response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}".format(len(html_content), html_content)
+                     ssl_socket.send(response.encode())
+                     return
+
+                # Forward Request Automatically
+                print(f"[!] Filter Mode: Auto-forwarding to {hostname}...")
+                try:
+                    url = f"https://{hostname}{path}"
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        verify=False,
+                        allow_redirects=False
+                    )
+                    
+                    # Check Blocked Keywords in Response
+                    blocked_keywords = self.storage.get_blocked_keywords()
+                    resp_content = response.text
+                    
+                    for keyword in blocked_keywords:
+                        if keyword in resp_content:
+                            print(f"[!] Response from {hostname} BLOCKED by Filter Mode (Keyword: {keyword})")
+                            html_content = "<html><body><h1>Access Denied</h1><p>The response contained a blocked keyword: <b>{}</b></p></body></html>".format(keyword)
+                            resp_str = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}".format(len(html_content), html_content)
+                            ssl_socket.send(resp_str.encode())
+                            return
+
+                    # Forward Response
+                    status_line = f"HTTP/1.1 {response.status_code} OK\r\n"
+                    ssl_socket.send(status_line.encode())
+                    
+                    for key, value in response.headers.items():
+                        if key.lower() in ['transfer-encoding', 'content-encoding', 'content-length']:
+                            continue
+                        header_line = f"{key}: {value}\r\n"
+                        ssl_socket.send(header_line.encode())
+                    
+                    ssl_socket.send(f"Content-Length: {len(response.content)}\r\n".encode())
+                    ssl_socket.send(b"\r\n")
+                    ssl_socket.send(response.content)
+                    print(f"[+] Response forwarded (Filter Mode)")
+                    return
+
+                except Exception as e:
+                    print(f"[-] Error forwarding in Filter Mode: {e}")
+                    ssl_socket.send(b"HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error")
+                    return
+
+            # -----------------------------------------------------------------
+            # Intercept Mode (Original Logic)
+            # -----------------------------------------------------------------
             
             # Create unique request ID
             request_id = str(uuid.uuid4())
@@ -221,7 +286,7 @@ class MITMProxyServer:
                 method=method,
                 path=path,
                 headers=headers,
-                body=encrypted_data.hex(),
+                body=body,
                 timestamp=timestamp
             )
             
@@ -229,7 +294,8 @@ class MITMProxyServer:
             print(f"[*] Waiting for GUI decision...")
             
             # Wait for GUI decision (max 30 seconds)
-            max_wait = 600 
+            # Wait for GUI decision (max 60 seconds)
+            max_wait = 60
             waited = 0
             status = 'pending'
             
@@ -245,12 +311,116 @@ class MITMProxyServer:
             if status == 'blocked':
                 print(f"[!] Request blocked by user")
                 ssl_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+            
             elif status == 'allowed':
-                print(f"[!] Request allowed (forwarding not implemented yet)")
-                ssl_socket.send(b"HTTP/1.1 200 OK\r\n\r\nAllowed by proxy")
+                # Reload request data in case it was modified
+                req_data = self.storage.get_request(request_id)
+                if req_data:
+                    method = req_data['method']
+                    path = req_data['path']
+                    headers = req_data['headers']
+                    # Check if body was modified (stored as string/hex)
+                    # For now assume string if modified
+                    if 'body' in req_data:
+                        body = req_data['body']
+                
+                # Remove Accept-Encoding to avoid compressed responses we can't handle (like brotli)
+                # requests will add its own acceptable encodings (gzip, deflate) and decode automatically
+                if 'Accept-Encoding' in headers:
+                    del headers['Accept-Encoding']
+                # Case-insensitive check just in case
+                for k in list(headers.keys()):
+                    if k.lower() == 'accept-encoding':
+                        del headers[k]
+
+                print(f"[!] Request allowed - Forwarding to {hostname}...")
+                
+                try:
+                    # Construct URL
+                    url = f"https://{hostname}{path}"
+                    
+                    # Forward request using requests library
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        verify=False,  # Ignore SSL verify for upstream
+                        allow_redirects=False 
+                    )
+                    
+                    print(f"[+] Received response from server: {response.status_code}")
+                    
+                    # Save response to Redis
+                    self.storage.save_response(
+                        request_id=request_id,
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        body=response.text 
+                    )
+                    
+                    # Wait for Response Decision
+                    print(f"[*] Waiting for RESPONSE decision...")
+                    resp_waited = 0
+                    resp_status = 'pending'
+                    while resp_waited < max_wait:
+                        resp_status = self.storage.get_response_status(request_id)
+                        if resp_status != 'pending':
+                             break
+                        time.sleep(0.5)
+                        resp_waited += 0.5
+                    
+                    if resp_status == 'allowed':
+                        # Reload response data in case it was modified
+                        stored_resp = self.storage.get_response(request_id)
+                        resp_status_code = response.status_code
+                        resp_headers = dict(response.headers)
+                        resp_body = response.content
+                        
+                        if stored_resp:
+                            resp_status_code = int(stored_resp.get('status_code', response.status_code))
+                            resp_headers = stored_resp.get('headers', resp_headers)
+                            resp_body_str = stored_resp.get('body')
+                            if resp_body_str is not None:
+                                resp_body = resp_body_str.encode('utf-8')
+
+                        # Send response back to client
+                        # Construct status line
+                        status_line = f"HTTP/1.1 {resp_status_code} OK\r\n" # Simplified reason
+                        ssl_socket.send(status_line.encode())
+                        
+                        # Send headers
+                        for key, value in resp_headers.items():
+                            if key.lower() == 'transfer-encoding' or key.lower() == 'content-encoding':
+                                continue
+                            # Update content-length if body changed
+                            if key.lower() == 'content-length':
+                                value = str(len(resp_body))
+                                
+                            header_line = f"{key}: {value}\r\n"
+                            ssl_socket.send(header_line.encode())
+                        
+                        ssl_socket.send(b"\r\n")
+                        
+                        # Send body
+                        ssl_socket.send(resp_body)
+                        print(f"[+] Response forwarded to client")
+                        
+                    elif resp_status == 'blocked':
+                         ssl_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+                    else:
+                         ssl_socket.send(b"HTTP/1.1 504 Gateway Timeout\r\n\r\nResponse decision timeout")
+                    
+                except Exception as e:
+                    print(f"[-] Error forwarding HTTPS request: {e}")
+                    ssl_socket.send(b"HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error")
+                    
             elif status == 'modified':
-                print(f"[!] Request modified (forwarding not implemented yet)")
-                ssl_socket.send(b"HTTP/1.1 200 OK\r\n\r\nModified by proxy")
+                # Similar to allowed but use modified body/headers if implemented
+                print(f"[!] Request modified (using allowed path for now)")
+                # For now fallthrough to blocked or implement same as allowed but with modified data
+                ssl_socket.send(b"HTTP/1.1 501 Not Implemented\r\n\r\nModified requests not yet implemented")
+                
             else:
                 print(f"[-] Timeout waiting for decision")
                 ssl_socket.send(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
@@ -263,20 +433,247 @@ class MITMProxyServer:
             except:
                 pass
     
-    def _handle_http_request(self, client_socket: socket.socket, request_line: str) -> None:
+    def _handle_http_request(self, client_socket: socket.socket, request_line: str, initial_data: bytes) -> None:
         """
         Handle plain HTTP request (non-HTTPS)
         
         Args:
             client_socket: Client socket
             request_line: HTTP request line
+            initial_data: Initial data received from client
         """
         try:
-            print(f"[+] HTTP request received")
-            client_socket.send(
-                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"
-                b"Hello from MITM Proxy"
+            # Decode request
+            try:
+                request_str = initial_data.decode('utf-8', errors='ignore')
+            except Exception:
+                request_str = "[Binary data]"
+            
+            print(f"[+] HTTP request received:\n{request_str[:200]}")
+            
+            # Parse request
+            parsed = RequestInterceptor.parse_request(request_str)
+            method = parsed['method']
+            path = parsed['path']
+            headers = parsed['headers']
+            body = parsed['body']
+            
+            # Extract hostname from Host header
+            hostname = headers.get('Host', '')
+            if not hostname:
+                 # Fallback if full URL in path
+                 if '://' in path:
+                     hostname = path.split('://')[1].split('/')[0]
+            
+            # -----------------------------------------------------------------
+            # Filter Mode Check
+            # -----------------------------------------------------------------
+            if self.storage.get_proxy_mode() == 'filter':
+                # Check Blocked Domains
+                blocked_domains = self.storage.get_blocked_domains()
+                if hostname in blocked_domains:
+                     print(f"[!] Request to {hostname} BLOCKED by Filter Mode")
+                     html_content = "<html><body><h1>Access Denied</h1><p>The domain <b>{}</b> is blocked by the proxy.</p></body></html>".format(hostname)
+                     response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}".format(len(html_content), html_content)
+                     client_socket.send(response.encode())
+                     return
+
+                # Forward Request Automatically
+                print(f"[!] Filter Mode: Auto-forwarding to {hostname}...")
+                try:
+                    if path.startswith('http://'):
+                         url = path
+                    else:
+                         clean_path = path if path.startswith('/') else f"/{path}"
+                         url = f"http://{hostname}{clean_path}"
+                    
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        allow_redirects=False
+                    )
+                    
+                    # Check Blocked Keywords in Response
+                    blocked_keywords = self.storage.get_blocked_keywords()
+                    resp_content = response.text
+                    
+                    for keyword in blocked_keywords:
+                        if keyword in resp_content:
+                            print(f"[!] Response from {hostname} BLOCKED by Filter Mode (Keyword: {keyword})")
+                            html_content = "<html><body><h1>Access Denied</h1><p>The response contained a blocked keyword: <b>{}</b></p></body></html>".format(keyword)
+                            resp_str = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}".format(len(html_content), html_content)
+                            client_socket.send(resp_str.encode())
+                            return
+
+                    # Forward Response
+                    status_line = f"HTTP/1.1 {response.status_code} OK\r\n"
+                    client_socket.send(status_line.encode())
+                    
+                    for key, value in response.headers.items():
+                        if key.lower() in ['transfer-encoding', 'content-encoding', 'content-length']:
+                            continue
+                        header_line = f"{key}: {value}\r\n"
+                        client_socket.send(header_line.encode())
+                    
+                    client_socket.send(f"Content-Length: {len(response.content)}\r\n".encode())
+                    client_socket.send(b"\r\n")
+                    client_socket.send(response.content)
+                    print(f"[+] Response forwarded (Filter Mode)")
+                    return
+
+                except Exception as e:
+                    print(f"[-] Error forwarding in Filter Mode: {e}")
+                    client_socket.send(b"HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error")
+                    return
+
+            # -----------------------------------------------------------------
+            # Intercept Mode (Original Logic)
+            # -----------------------------------------------------------------
+
+            # Create unique request ID
+            request_id = str(uuid.uuid4())
+            timestamp = datetime.now().isoformat()
+            
+            # Store to Redis
+            self.storage.save_request(
+                request_id=request_id,
+                hostname=hostname,
+                method=method,
+                path=path,
+                headers=headers,
+                body=body,
+                timestamp=timestamp
             )
+            
+            print(f"[+] Request {request_id} saved to Redis")
+            print(f"[*] Waiting for GUI decision...")
+            
+            # Wait for GUI decision (max 60 seconds)
+            max_wait = 60
+            waited = 0
+            status = 'pending'
+            
+            while waited < max_wait:
+                status = self.storage.get_request_status(request_id)
+                if status != 'pending':
+                    print(f"[+] Request status: {status}")
+                    break
+                time.sleep(0.5)
+                waited += 0.5
+                
+            # Handle based on status
+            if status == 'blocked':
+                print(f"[!] Request blocked by user")
+                client_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+                
+            elif status == 'allowed':
+                # Reload request data in case it was modified
+                req_data = self.storage.get_request(request_id)
+                if req_data:
+                    method = req_data['method']
+                    path = req_data['path']
+                    headers = req_data['headers']
+                    if 'body' in req_data:
+                        body = req_data['body']
+
+                # Remove Accept-Encoding to avoid compressed responses we can't handle (like brotli)
+                if 'Accept-Encoding' in headers:
+                    del headers['Accept-Encoding']
+                for k in list(headers.keys()):
+                    if k.lower() == 'accept-encoding':
+                        del headers[k]
+
+                print(f"[!] Request allowed - Forwarding to {hostname}...")
+                
+                try:
+                    # Construct URL. Handle if path is already full URL
+                    if path.startswith('http://'):
+                         url = path
+                    else:
+                         clean_path = path if path.startswith('/') else f"/{path}"
+                         url = f"http://{hostname}{clean_path}"
+                    
+                    # Forward request using requests library
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        allow_redirects=False
+                    )
+                    
+                    print(f"[+] Received response from server: {response.status_code}")
+                    
+                    # Save response to Redis
+                    self.storage.save_response(
+                        request_id=request_id,
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        body=response.text
+                    )
+                    
+                    # Wait for Response Decision
+                    print(f"[*] Waiting for RESPONSE decision...")
+                    resp_waited = 0
+                    resp_status = 'pending'
+                    while resp_waited < max_wait:
+                        resp_status = self.storage.get_response_status(request_id)
+                        if resp_status != 'pending':
+                             break
+                        time.sleep(0.5)
+                        resp_waited += 0.5
+                    
+                    if resp_status == 'allowed':
+                        # Reload response data in case it was modified
+                        stored_resp = self.storage.get_response(request_id)
+                        resp_status_code = response.status_code
+                        resp_headers = dict(response.headers)
+                        resp_body = response.content
+                        
+                        if stored_resp:
+                            resp_status_code = int(stored_resp.get('status_code', response.status_code))
+                            resp_headers = stored_resp.get('headers', resp_headers)
+                            resp_body_str = stored_resp.get('body')
+                            if resp_body_str is not None:
+                                resp_body = resp_body_str.encode('utf-8')
+
+                        # Send response back to client
+                        status_line = f"HTTP/1.1 {resp_status_code} OK\r\n"
+                        client_socket.send(status_line.encode())
+                        
+                        # Send headers
+                        for key, value in resp_headers.items():
+                            if key.lower() == 'transfer-encoding' or key.lower() == 'content-encoding':
+                                continue
+                            if key.lower() == 'content-length':
+                                value = str(len(resp_body))
+                            header_line = f"{key}: {value}\r\n"
+                            client_socket.send(header_line.encode())
+                        
+                        client_socket.send(b"\r\n")
+                        
+                        # Send body
+                        client_socket.send(resp_body)
+                        print(f"[+] Response forwarded to client")
+                        
+                    elif resp_status == 'blocked':
+                         client_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+                    else:
+                         client_socket.send(b"HTTP/1.1 504 Gateway Timeout\r\n\r\nResponse decision timeout")
+                    
+                except Exception as e:
+                    print(f"[-] Error forwarding HTTP request: {e}")
+                    client_socket.send(b"HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error")
+                    
+            elif status == 'modified':
+                 client_socket.send(b"HTTP/1.1 501 Not Implemented\r\n\r\nModified requests not yet implemented")
+                 
+            else:
+                 print(f"[-] Timeout waiting for decision")
+                 client_socket.send(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
+
         except Exception as e:
             print(f"[-] Error handling HTTP request: {e}")
 

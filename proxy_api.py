@@ -36,14 +36,13 @@ class ProxyAPI:
             
             for req_id in pending_ids:
                 req = self.storage.get_request(req_id)
-                if req and req.get('status') == 'pending':
-                    requests_list.append({
-                        'id': req['id'],
-                        'hostname': req['hostname'],
-                        'method': req['method'],
-                        'path': req['path'],
-                        'timestamp': req['timestamp']
-                    })
+                requests_list.append({
+                    'id': req['id'],
+                    'hostname': req['hostname'],
+                    'method': req['method'],
+                    'path': req['path'],
+                    'timestamp': req['timestamp']
+                })
             
             return jsonify(requests_list), 200
         
@@ -68,54 +67,182 @@ class ProxyAPI:
                 'headers': req['headers'],
                 'body': body_str,
                 'timestamp': req['timestamp'],
-                'status': req['status']
             }), 200
         
-        # Decision endpoints
+        @self.app.route('/api/responses/<request_id>', methods=['GET'])
+        def get_request_response(request_id: str) -> Tuple[Dict[str, Any], int]:
+            """Get request response details"""
+            resp = self.storage.get_response(request_id)
+            
+            if not resp:
+                return jsonify({'error': 'Response not found'}), 404
+            
+            return jsonify({
+                'id': request_id,
+                'status_code': resp['status_code'],
+                'headers': resp['headers'],
+                'body': resp['body']
+            }), 200        
         @self.app.route('/api/requests/<request_id>/allow', methods=['POST'])
         def allow_request(request_id: str) -> Tuple[Dict[str, Any], int]:
-            """Mark request as allowed (to be forwarded)"""
-            success = self.storage.update_request_status(request_id, 'allowed')
-            if success:
-                print(f"[+] Request {request_id} marked as ALLOWED")
-                return jsonify({'status': 'allowed'}), 200
-            else:
-                return jsonify({'error': 'Failed to update status'}), 500
-        
-        @self.app.route('/api/requests/<request_id>/block', methods=['POST'])
-        def block_request(request_id: str) -> Tuple[Dict[str, Any], int]:
-            """Mark request as blocked (will not be forwarded)"""
-            success = self.storage.update_request_status(request_id, 'blocked')
-            if success:
-                print(f"[+] Request {request_id} marked as BLOCKED")
-                return jsonify({'status': 'blocked'}), 200
-            else:
-                return jsonify({'error': 'Failed to update status'}), 500
-        
-        @self.app.route('/api/requests/<request_id>/modify', methods=['POST'])
-        def modify_request(request_id: str) -> Tuple[Dict[str, Any], int]:
-            """Mark request as modified and save modifications"""
+            """Mark request as allowed (to be forwarded), optionally updating data"""
             try:
-                data = flask_request.get_json()
-                modified_body = data.get('body', '')
+                # Check for modifications
+                data = flask_request.get_json(silent=True)
+                if data:
+                    headers = data.get('headers')
+                    body = data.get('body')
+                    if headers or body is not None:
+                        self.storage.update_request_data(request_id, headers, body)
                 
-                self.storage.set_modified_body(request_id, modified_body)
-                self.storage.update_request_status(request_id, 'modified')
-                
-                print(f"[+] Request {request_id} marked as MODIFIED")
-                return jsonify({'status': 'modified'}), 200
+                success = self.storage.update_request_status(request_id, 'allowed')
+                if success:
+                    print(f"[+] Request {request_id} is ALLOWED")
+                    return jsonify({'status': 'allowed'}), 200
+                else:
+                    return jsonify({'error': 'Failed to update status'}), 500
+            except Exception as e:
+                return jsonify({'error': str(e)}), 400
+        
+        @self.app.route('/api/responses/<request_id>/allow', methods=['POST'])
+        def allow_response(request_id: str) -> Tuple[Dict[str, Any], int]:
+            """Mark response as allowed (to be returned to client), optionally updating data"""
+            try:
+                # Check for modifications
+                data = flask_request.get_json(silent=True)
+                if data:
+                    headers = data.get('headers')
+                    body = data.get('body')
+                    # Ensure headers is a dict if provided (JSON string from frontend?)
+                    # Frontend usually sends object, but let's be safe if we need to parse
+                    # Here we assume it receives a dict structure
+                    if headers or body is not None:
+                        self.storage.update_response_data(request_id, headers, body)
+
+                success = self.storage.update_response_status(request_id, 'allowed')
+                if success:
+                    print(f"[+] Response {request_id} is ALLOWED")
+                    return jsonify({'status': 'allowed'}), 200
+                else:
+                    return jsonify({'error': 'Failed to update status'}), 500
             except Exception as e:
                 return jsonify({'error': str(e)}), 400
         
         @self.app.route('/api/requests/<request_id>/delete', methods=['DELETE'])
         def delete_request(request_id: str) -> Tuple[Dict[str, Any], int]:
-            """Delete request from Redis"""
+            """Delete a request"""
             success = self.storage.delete_request(request_id)
             if success:
-                print(f"[+] Request {request_id} deleted")
                 return jsonify({'status': 'deleted'}), 200
             else:
                 return jsonify({'error': 'Failed to delete request'}), 500
+
+        @self.app.route('/api/requests/<request_id>/block', methods=['POST'])
+        def block_request(request_id: str) -> Tuple[Dict[str, Any], int]:
+            """Mark request as blocked (will not be forwarded)"""
+            success = self.storage.delete_request(request_id)
+            if success:
+                print(f"[+] Request {request_id} is BLOCKED")
+                return jsonify({'status': 'blocked'}), 200
+            else:
+                return jsonify({'error': 'Failed to update status'}), 500
+        
+        # -------------------------------------------------------------------------
+        # Configuration Endpoints (Filter Mode)
+        # -------------------------------------------------------------------------
+        
+        @self.app.route('/api/config/mode', methods=['GET'])
+        def get_proxy_mode() -> Tuple[Dict[str, Any], int]:
+            """Get current proxy mode"""
+            mode = self.storage.get_proxy_mode()
+            return jsonify({'mode': mode}), 200
+            
+        @self.app.route('/api/config/mode', methods=['POST'])
+        def set_proxy_mode() -> Tuple[Dict[str, Any], int]:
+            """Set proxy mode"""
+            data = flask_request.get_json(silent=True)
+            if not data or 'mode' not in data:
+                return jsonify({'error': 'Mode required'}), 400
+            
+            mode = data['mode']
+            if self.storage.set_proxy_mode(mode):
+                return jsonify({'status': 'success', 'mode': mode}), 200
+            else:
+                return jsonify({'error': 'Invalid mode'}), 400
+                
+        @self.app.route('/api/config/domains', methods=['GET'])
+        def get_blocked_domains() -> Tuple[Dict[str, Any], int]:
+            """Get blocked domains"""
+            domains = self.storage.get_blocked_domains()
+            return jsonify({'domains': domains}), 200
+            
+        @self.app.route('/api/config/domains', methods=['POST'])
+        def add_blocked_domain() -> Tuple[Dict[str, Any], int]:
+            """Add blocked domain"""
+            data = flask_request.get_json(silent=True)
+            if not data or 'domain' not in data:
+                return jsonify({'error': 'Domain required'}), 400
+                
+            domain = data['domain']
+            if self.storage.add_blocked_domain(domain):
+                return jsonify({'status': 'success', 'domain': domain}), 200
+            else:
+                return jsonify({'error': 'Failed to add domain'}), 500
+        
+        # We need to capture the domain from URL, but domains might have dots.
+        # Flask might interpret dots as file extensions if not careful, 
+        # but here it's part of the path, usually fine.
+        @self.app.route('/api/config/domains/<path:domain>', methods=['DELETE'])
+        def remove_blocked_domain(domain: str) -> Tuple[Dict[str, Any], int]:
+            """Remove blocked domain"""
+            if self.storage.remove_blocked_domain(domain):
+                return jsonify({'status': 'success', 'domain': domain}), 200
+            else:
+                return jsonify({'error': 'Failed to remove domain'}), 500
+                
+        @self.app.route('/api/config/keywords', methods=['GET'])
+        def get_blocked_keywords() -> Tuple[Dict[str, Any], int]:
+            """Get blocked keywords"""
+            keywords = self.storage.get_blocked_keywords()
+            return jsonify({'keywords': keywords}), 200
+            
+        @self.app.route('/api/config/keywords', methods=['POST'])
+        def add_blocked_keyword() -> Tuple[Dict[str, Any], int]:
+            """Add blocked keyword"""
+            data = flask_request.get_json(silent=True)
+            if not data or 'keyword' not in data:
+                return jsonify({'error': 'Keyword required'}), 400
+                
+            keyword = data['keyword']
+            if self.storage.add_blocked_keyword(keyword):
+                return jsonify({'status': 'success', 'keyword': keyword}), 200
+            else:
+                return jsonify({'error': 'Failed to add keyword'}), 500
+                
+        @self.app.route('/api/config/keywords/<path:keyword>', methods=['DELETE'])
+        def remove_blocked_keyword(keyword: str) -> Tuple[Dict[str, Any], int]:
+            """Remove blocked keyword"""
+            if self.storage.remove_blocked_keyword(keyword):
+                return jsonify({'status': 'success', 'keyword': keyword}), 200
+            else:
+                return jsonify({'error': 'Failed to remove keyword'}), 500
+
+        
+        # @self.app.route('/api/requests/<request_id>/modify', methods=['POST'])
+        # def modify_request(request_id: str) -> Tuple[Dict[str, Any], int]:
+        #     """Mark request as modified and save modifications"""
+        #     try:
+        #         data = flask_request.get_json()
+        #         modified_body = data.get('body', '')
+                
+        #         self.storage.set_modified_body(request_id, modified_body)
+        #         self.storage.update_request_status(request_id, 'modified')
+                
+        #         print(f"[+] Request {request_id} marked as MODIFIED")
+        #         return jsonify({'status': 'modified'}), 200
+        #     except Exception as e:
+        #         return jsonify({'error': str(e)}), 400
+        
         
         # Admin endpoints
         @self.app.route('/api/health', methods=['GET'])
@@ -136,23 +263,6 @@ class ProxyAPI:
                 'redis_health': self.storage.get_health_status()
             }), 200
         
-        @self.app.route('/api/clear', methods=['POST'])
-        def clear_all() -> Tuple[Dict[str, Any], int]:
-            """Clear all requests (requires confirmation)"""
-            try:
-                confirmed = flask_request.json.get('confirm', False)
-                if not confirmed:
-                    return jsonify({'error': 'Confirmation required'}), 400
-                
-                success = self.storage.clear_all_requests()
-                if success:
-                    print("[!] All requests cleared")
-                    return jsonify({'status': 'cleared'}), 200
-                else:
-                    return jsonify({'error': 'Failed to clear'}), 500
-            except Exception as e:
-                return jsonify({'error': str(e)}), 400
-    
     def run(self, debug: bool = False) -> None:
         """
         Run Flask API server

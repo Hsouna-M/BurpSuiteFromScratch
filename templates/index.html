@@ -1,92 +1,611 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>MITM Proxy Inspector</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; }
-        .container { display: flex; height: 100vh; }
-        .sidebar { width: 30%; border-right: 1px solid #444; overflow-y: auto; }
-        .main { width: 70%; display: flex; flex-direction: column; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header / Mode Switcher */
+        header {
+            background: #2d2d30;
+            padding: 10px 20px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 18px;
+            color: #4ec9b0;
+        }
+
+        .mode-switch {
+            display: flex;
+            background: #1e1e1e;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #444;
+        }
+
+        .mode-btn {
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            color: #888;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .mode-btn:hover {
+            color: #fff;
+        }
+
+        .mode-btn.active {
+            background: #007acc;
+            color: white;
+        }
+
+        /* Views */
+        .view-container {
+            flex: 1;
+            display: none;
+            height: calc(100vh - 54px);
+        }
+
+        .view-container.active {
+            display: flex;
+        }
+
+        /* Intercept View Styles */
+        .sidebar {
+            width: 30%;
+            border-right: 1px solid #444;
+            overflow-y: auto;
+            background: #252526;
+        }
+
+        .main {
+            width: 70%;
+            display: flex;
+            flex-direction: column;
+        }
+
         .request-item {
             padding: 10px;
             border-bottom: 1px solid #444;
             cursor: pointer;
             background: #252526;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        .request-item:hover { background: #2d2d30; }
-        .request-item.selected { background: #094771; }
-        .details { padding: 20px; overflow-y: auto; flex: 1; }
-        .controls { padding: 20px; border-top: 1px solid #444; display: flex; gap: 10px; }
+
+        .request-item:hover {
+            background: #2d2d30;
+        }
+
+        .request-item.selected {
+            background: #094771;
+            color: white;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #444;
+            background: #252526;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-right: 1px solid #444;
+            background: #2d2d30;
+        }
+
+        .tab.active {
+            background: #1e1e1e;
+            border-bottom: 1px solid #1e1e1e;
+        }
+
+        .content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .details {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            display: none;
+        }
+
+        .details.active {
+            display: block;
+        }
+
+        .controls {
+            padding: 20px;
+            border-top: 1px solid #444;
+            display: flex;
+            gap: 10px;
+            background: #252526;
+        }
+
+        /* Filter View Styles */
+        .filter-panel {
+            padding: 40px;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            overflow-y: auto;
+        }
+
+        .filter-section {
+            background: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 1px solid #444;
+        }
+
+        .filter-section h2 {
+            margin-bottom: 15px;
+            color: #dcdcaa;
+            font-size: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 10px;
+            background: #1e1e1e;
+            border: 1px solid #444;
+            color: white;
+            border-radius: 4px;
+        }
+
+        .list-container {
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 4px;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .list-item {
+            padding: 10px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .list-item:last-child {
+            border-bottom: none;
+        }
+
+        .list-item span {
+            font-family: monospace;
+        }
+
+        .list-item button {
+            padding: 4px 8px;
+            font-size: 12px;
+            background: #f48771;
+            color: #000;
+        }
+
+        /* Common Elements */
         button {
             padding: 10px 20px;
             border: none;
             cursor: pointer;
             border-radius: 4px;
             font-size: 14px;
+            font-weight: bold;
         }
-        .allow { background: #4ec9b0; color: black; }
-        .block { background: #f48771; color: black; }
-        .modify { background: #569cd6; color: white; }
-        pre { background: #1e1e1e; padding: 15px; overflow-x: auto; border-radius: 4px; }
+
+        .allow {
+            background: #4ec9b0;
+            color: black;
+        }
+
+        .block {
+            background: #f48771;
+            color: black;
+        }
+
+        .add-btn {
+            background: #4ec9b0;
+            color: black;
+        }
+
+        textarea {
+            width: 100%;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            min-height: 100px;
+            margin-bottom: 15px;
+            resize: vertical;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #aaa;
+        }
     </style>
 </head>
+
 <body>
-    <div class="container">
+    <header>
+        <h1>MITM Proxy Inspector</h1>
+        <div class="mode-switch">
+            <button class="mode-btn active" id="btn-intercept" onclick="setMode('intercept')">Intercept Mode</button>
+            <button class="mode-btn" id="btn-filter" onclick="setMode('filter')">Filter Mode</button>
+        </div>
+    </header>
+
+    <!-- Intercept View -->
+    <div class="view-container active" id="view-intercept">
         <div class="sidebar" id="sidebar">
-            <!-- Requests listed here -->
+            <div style="padding: 20px; text-align: center; color: #666;">Waiting for requests...</div>
         </div>
         <div class="main">
-            <div class="details" id="details">
-                <p>Select a request to inspect</p>
+            <div class="tabs">
+                <div class="tab active" id="tab-request" onclick="switchTab('request')">Request</div>
+                <div class="tab" id="tab-response" onclick="switchTab('response')">Response</div>
             </div>
+
+            <div class="content-area">
+                <div class="details active" id="request-details">
+                    <p style="padding: 20px; color: #888;">Select a request to inspect</p>
+                </div>
+                <div class="details" id="response-details">
+                    <p style="padding: 20px; color: #888;">Select a request or wait for response...</p>
+                </div>
+            </div>
+
             <div class="controls">
-                <button class="allow" onclick="allowRequest()">Allow</button>
-                <button class="block" onclick="blockRequest()">Block</button>
-                <button class="modify" onclick="modifyRequest()">Modify</button>
+                <button class="allow" onclick="forward()">Forward</button>
+                <button class="block" onclick="blockRequest()">Drop</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter View -->
+    <div class="view-container" id="view-filter">
+        <div class="filter-panel">
+            <div class="filter-section">
+                <h2>Blocked Domains</h2>
+                <div class="input-group">
+                    <input type="text" id="domain-input" placeholder="e.g. example.com">
+                    <button class="add-btn" onclick="addDomain()">Add Domain</button>
+                </div>
+                <div class="list-container" id="domain-list">
+                    <!-- Domains go here -->
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h2>Blocked Keywords (Response Body)</h2>
+                <div class="input-group">
+                    <input type="text" id="keyword-input" placeholder="e.g. secret">
+                    <button class="add-btn" onclick="addKeyword()">Add Keyword</button>
+                </div>
+                <div class="list-container" id="keyword-list">
+                    <!-- Keywords go here -->
+                </div>
             </div>
         </div>
     </div>
 
     <script>
         let currentRequestId = null;
+        let currentTab = 'request';
+        let refreshInterval = null;
+
+        // ----------------------------------------------------------------
+        // Initialization
+        // ----------------------------------------------------------------
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load current mode
+            fetch('/api/config/mode')
+                .then(r => r.json())
+                .then(data => {
+                    updateModeUI(data.mode);
+                })
+                .catch(e => console.error('Error fetching mode:', e));
+        });
+
+        // ----------------------------------------------------------------
+        // Mode Handling
+        // ----------------------------------------------------------------
+        function setMode(mode) {
+            fetch('/api/config/mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: mode })
+            })
+                .then(r => r.json())
+                .then(data => {
+                    updateModeUI(mode);
+                });
+        }
+
+        function updateModeUI(mode) {
+            // Update Buttons
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+
+            // Update Views
+            document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
+            document.getElementById(`view-${mode}`).classList.add('active');
+
+            // Stop/Start Polling
+            if (mode === 'intercept') {
+                refreshRequests();
+                if (!refreshInterval) refreshInterval = setInterval(refreshRequests, 2000);
+            } else {
+                if (refreshInterval) {
+                    clearInterval(refreshInterval);
+                    refreshInterval = null;
+                }
+                loadFilterSettings();
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // Filter Mode Logic
+        // ----------------------------------------------------------------
+        function loadFilterSettings() {
+            // Load Domains
+            fetch('/api/config/domains')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('domain-list');
+                    list.innerHTML = '';
+                    if (data.domains.length === 0) list.innerHTML = '<div style="padding:10px; color:#666">No blocked domains</div>';
+
+                    data.domains.forEach(domain => {
+                        const item = document.createElement('div');
+                        item.className = 'list-item';
+                        item.innerHTML = `
+                            <span>${domain}</span>
+                            <button onclick="removeDomain('${domain}')">Remove</button>
+                        `;
+                        list.appendChild(item);
+                    });
+                });
+
+            // Load Keywords
+            fetch('/api/config/keywords')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('keyword-list');
+                    list.innerHTML = '';
+                    if (data.keywords.length === 0) list.innerHTML = '<div style="padding:10px; color:#666">No blocked keywords</div>';
+
+                    data.keywords.forEach(keyword => {
+                        const item = document.createElement('div');
+                        item.className = 'list-item';
+                        item.innerHTML = `
+                            <span>${keyword}</span>
+                            <button onclick="removeKeyword('${keyword}')">Remove</button>
+                        `;
+                        list.appendChild(item);
+                    });
+                });
+        }
+
+        function addDomain() {
+            const input = document.getElementById('domain-input');
+            const domain = input.value.trim();
+            if (!domain) return;
+
+            fetch('/api/config/domains', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain: domain })
+            }).then(() => {
+                input.value = '';
+                loadFilterSettings();
+            });
+        }
+
+        function removeDomain(domain) {
+            fetch(`/api/config/domains/${domain}`, { method: 'DELETE' })
+                .then(() => loadFilterSettings());
+        }
+
+        function addKeyword() {
+            const input = document.getElementById('keyword-input');
+            const keyword = input.value.trim();
+            if (!keyword) return;
+
+            fetch('/api/config/keywords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keyword: keyword })
+            }).then(() => {
+                input.value = '';
+                loadFilterSettings();
+            });
+        }
+
+        function removeKeyword(keyword) {
+            fetch(`/api/config/keywords/${keyword}`, { method: 'DELETE' })
+                .then(() => loadFilterSettings());
+        }
+
+
+        // ----------------------------------------------------------------
+        // Intercept Mode Logic (Existing + Refined)
+        // ----------------------------------------------------------------
+        function switchTab(tabName) {
+            currentTab = tabName;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
+            document.querySelectorAll('.details').forEach(d => d.classList.remove('active'));
+            document.getElementById(`${tabName}-details`).classList.add('active');
+
+            if (tabName === 'response' && currentRequestId) {
+                fetchResponse(currentRequestId);
+            }
+        }
 
         function refreshRequests() {
+            // Only refresh if visible
+            if (!document.getElementById('view-intercept').classList.contains('active')) return;
+
             fetch('/api/requests')
                 .then(r => r.json())
                 .then(requests => {
                     const sidebar = document.getElementById('sidebar');
+                    const currentSelection = document.querySelector('.request-item.selected');
+                    const selectedId = currentSelection ? currentRequestId : null;
+
+                    if (requests.length === 0) {
+                        sidebar.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No pending requests</div>';
+                        return;
+                    }
+
+                    // Simple diff check could be better but overwriting is safe for now
                     sidebar.innerHTML = '';
                     requests.forEach(req => {
                         const div = document.createElement('div');
                         div.className = 'request-item';
+                        if (req.id === selectedId) div.classList.add('selected');
                         div.textContent = `${req.method} ${req.hostname}${req.path}`;
-                        div.onclick = () => selectRequest(req.id);
+                        div.onclick = () => selectRequest(req.id, div);
                         sidebar.appendChild(div);
                     });
                 });
         }
 
-        function selectRequest(id) {
+        function selectRequest(id, element) {
             currentRequestId = id;
+            switchTab('request');
+            document.querySelectorAll('.request-item').forEach(i => i.classList.remove('selected'));
+            element.classList.add('selected');
+
             fetch(`/api/requests/${id}`)
                 .then(r => r.json())
                 .then(req => {
-                    const details = document.getElementById('details');
+                    const details = document.getElementById('request-details');
+                    let bodyVal = req.body || '';
+                    if (req.headers && req.headers['Content-Type'] && req.headers['Content-Type'].includes('json')) {
+                        try { bodyVal = JSON.stringify(JSON.parse(bodyVal), null, 2); } catch (e) { }
+                    }
+
                     details.innerHTML = `
                         <h3>${req.method} ${req.hostname}${req.path}</h3>
-                        <h4>Headers:</h4>
-                        <pre>${JSON.stringify(req.headers, null, 2)}</pre>
-                        <h4>Body:</h4>
-                        <pre>${req.body}</pre>
+                        <label>Headers (JSON):</label>
+                        <textarea id="req-headers">${JSON.stringify(req.headers, null, 2)}</textarea>
+                        <label>Body:</label>
+                        <textarea id="req-body">${bodyVal}</textarea>
+                    `;
+                    document.getElementById('response-details').innerHTML = '<p style="padding: 20px; color: #888;">Fetching response status...</p>';
+                });
+        }
+
+        function fetchResponse(id) {
+            if (document.getElementById('res-headers')) return;
+
+            fetch(`/api/responses/${id}`)
+                .then(r => {
+                    if (r.status === 404) {
+                        document.getElementById('response-details').innerHTML = '<p style="padding: 20px; color: #dcdcaa;">Response pending. Forward request to load response.</p>';
+                        return null;
+                    }
+                    return r.json();
+                })
+                .then(resp => {
+                    if (!resp) return;
+                    const details = document.getElementById('response-details');
+
+                    let bodyDisplay = resp.body;
+                    try {
+                        const jsonBody = JSON.parse(resp.body);
+                        bodyDisplay = JSON.stringify(jsonBody, null, 2);
+                    } catch (e) { }
+
+                    details.innerHTML = `
+                        <h3 style="color: ${resp.status_code >= 200 && resp.status_code < 300 ? '#4ec9b0' : '#f48771'}">
+                            Status: ${resp.status_code}
+                        </h3>
+                        <label>Headers (JSON):</label>
+                        <textarea id="res-headers">${JSON.stringify(resp.headers, null, 2)}</textarea>
+                        <label>Body:</label>
+                        <textarea id="res-body">${bodyDisplay}</textarea>
                     `;
                 });
         }
 
-        function allowRequest() {
+        function forward() {
             if (!currentRequestId) return;
-            fetch(`/api/requests/${currentRequestId}/allow`, { method: 'POST' })
-                .then(() => refreshRequests());
+
+            if (currentTab === 'request') {
+                const headersStr = document.getElementById('req-headers').value;
+                const bodyStr = document.getElementById('req-body').value;
+                let headers = {};
+                try { headers = JSON.parse(headersStr); } catch (e) { alert('Invalid Headers JSON'); return; }
+
+                fetch(`/api/requests/${currentRequestId}/allow`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ headers: headers, body: bodyStr })
+                }).then(() => {
+                    switchTab('response');
+                    setTimeout(() => fetchResponse(currentRequestId), 1000);
+                });
+            } else {
+                const headersStr = document.getElementById('res-headers').value;
+                const bodyStr = document.getElementById('res-body').value;
+                let headers = {};
+                try { headers = JSON.parse(headersStr); } catch (e) { alert('Invalid Headers JSON'); return; }
+
+                fetch(`/api/responses/${currentRequestId}/allow`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ headers: headers, body: bodyStr })
+                }).then(() => {
+                    alert('Response forwarded!');
+                    refreshRequests();
+                });
+            }
         }
 
         function blockRequest() {
@@ -94,20 +613,7 @@
             fetch(`/api/requests/${currentRequestId}/block`, { method: 'POST' })
                 .then(() => refreshRequests());
         }
-
-        function modifyRequest() {
-            const newBody = prompt('Enter modified body:');
-            if (!newBody) return;
-            fetch(`/api/requests/${currentRequestId}/modify`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ body: newBody })
-            }).then(() => refreshRequests());
-        }
-
-        // Refresh requests every 1 second
-        setInterval(refreshRequests, 1000);
-        refreshRequests();
     </script>
 </body>
+
 </html>

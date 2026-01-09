@@ -1,5 +1,5 @@
 @startuml
-title TLS 1.2 Handshake Sequence Diagram
+title TlsHandshake
 
 participant "browser" as B
 participant "Proxy" as P

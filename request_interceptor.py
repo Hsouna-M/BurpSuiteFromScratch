@@ -14,37 +14,44 @@ class RequestInterceptor:
     def parse_request(raw_data: str) -> Dict[str, any]:
         """
         Parse HTTP request data into structured format
-        
+
         Args:
             raw_data: Raw HTTP request data as string
-            
+
         Returns:
             Dictionary containing parsed request details
         """
         try:
-            lines = raw_data.split('\r\n')
-            
+            # Split headers and body
+            parts = raw_data.split('\r\n\r\n', 1)
+            header_part = parts[0]
+            body = parts[1] if len(parts) > 1 else ""
+
+            lines = header_part.split('\r\n')
+
             if not lines:
                 return RequestInterceptor._empty_request()
-            
+
             # Parse request line
             request_line = lines[0]
             method, path, version = RequestInterceptor._parse_request_line(request_line)
-            
+
             # Parse headers
             headers = RequestInterceptor._parse_headers(lines[1:])
-            
+
             return {
                 'method': method,
                 'path': path,
                 'version': version,
                 'headers': headers,
-                'raw': raw_data
+                'body': body
             }
+
         except Exception as e:
             print(f"[-] Error parsing request: {e}")
             return RequestInterceptor._empty_request()
-    
+
+
     @staticmethod
     def _parse_request_line(line: str) -> Tuple[str, str, str]:
         """
@@ -136,40 +143,3 @@ class RequestInterceptor:
             True if CONNECT request, False otherwise
         """
         return request_line.strip().startswith("CONNECT")
-    
-    @staticmethod
-    def get_method_color(method: str) -> str:
-        """
-        Get color code for HTTP method (for logging)
-        
-        Args:
-            method: HTTP method
-            
-        Returns:
-            Color code
-        """
-        colors = {
-            'GET': '\033[92m',      # Green
-            'POST': '\033[94m',     # Blue
-            'PUT': '\033[93m',      # Yellow
-            'DELETE': '\033[91m',   # Red
-            'PATCH': '\033[96m',    # Cyan
-        }
-        return colors.get(method, '\033[0m')  # Default to reset
-    
-    @staticmethod
-    def format_request_summary(method: str, hostname: str, path: str) -> str:
-        """
-        Format request summary for display
-        
-        Args:
-            method: HTTP method
-            hostname: Target hostname
-            path: Request path
-            
-        Returns:
-            Formatted string
-        """
-        color = RequestInterceptor.get_method_color(method)
-        reset = '\033[0m'
-        return f"{color}{method}{reset} {hostname}{path}"
