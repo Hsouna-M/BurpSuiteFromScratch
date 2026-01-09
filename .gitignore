@@ -3,6 +3,7 @@ certs/
 __pycache__/
 *.py[codz]
 *$py.class
+explain.md
 
 # C extensions
 *.so
