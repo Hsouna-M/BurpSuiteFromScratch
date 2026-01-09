@@ -75,10 +75,28 @@ class ProxyGUI:
         # Request actions
         @self.app.route('/api/requests/<request_id>/allow', methods=['POST'])
         def allow_request(request_id):
-            """Send allow decision to proxy API"""
+            """Send allow decision to proxy API, with optional data"""
             try:
+                from flask import request as flask_request
+                data = flask_request.get_json(silent=True)
                 response = requests.post(
                     f'{self.proxy_api_url}/api/requests/{request_id}/allow',
+                    json=data,
+                    timeout=5
+                )
+                return jsonify(response.json())
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/responses/<request_id>/allow', methods=['POST'])
+        def allow_response(request_id):
+            """Send allow decision for response to proxy API, with optional data"""
+            try:
+                from flask import request as flask_request
+                data = flask_request.get_json(silent=True)
+                response = requests.post(
+                    f'{self.proxy_api_url}/api/responses/{request_id}/allow',
+                    json=data,
                     timeout=5
                 )
                 return jsonify(response.json())
@@ -91,21 +109,6 @@ class ProxyGUI:
             try:
                 response = requests.post(
                     f'{self.proxy_api_url}/api/requests/{request_id}/block',
-                    timeout=5
-                )
-                return jsonify(response.json())
-            except Exception as e:
-                return jsonify({'error': str(e)}), 500
-        
-        @self.app.route('/api/requests/<request_id>/modify', methods=['POST'])
-        def modify_request(request_id):
-            """Send modify decision to proxy API"""
-            try:
-                from flask import request as flask_request
-                data = flask_request.get_json()
-                response = requests.post(
-                    f'{self.proxy_api_url}/api/requests/{request_id}/modify',
-                    json=data,
                     timeout=5
                 )
                 return jsonify(response.json())

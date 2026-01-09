@@ -182,7 +182,8 @@ class RedisStorage:
             response_data = {
                 'status_code': status_code,
                 'headers': json.dumps(headers),
-                'body': body
+                'body': body,
+                'status': 'pending'  # Initial status for response interception
             }
             self.client.hset(f"response:{request_id}", mapping=response_data)
             self.client.expire(f"response:{request_id}", 3600)
@@ -215,6 +216,93 @@ class RedisStorage:
         except Exception as e:
             print(f"[-] Error getting response: {e}")
             return None
+
+    def update_response_status(self, request_id: str, status: str) -> bool:
+        """
+        Update response status (pending, allowed, blocked, modified)
+        
+        Args:
+            request_id: The request ID
+            status: New status
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.client.hset(f"response:{request_id}", "status", status)
+            return True
+        except Exception as e:
+            print(f"[-] Error updating response status: {e}")
+            return False
+
+    def get_response_status(self, request_id: str) -> str:
+        """
+        Get current response status
+        
+        Args:
+            request_id: The request ID
+            
+        Returns:
+            Status string or 'unknown'
+        """
+        try:
+            status = self.client.hget(f"response:{request_id}", "status")
+            return status if status else 'unknown'
+        except Exception as e:
+            print(f"[-] Error getting response status: {e}")
+            return 'error'
+
+    def update_request_data(self, request_id: str, headers: Optional[Dict] = None, body: Optional[str] = None) -> bool:
+        """
+        Update request headers and body
+        
+        Args:
+            request_id: The request ID
+            headers: New headers (optional)
+            body: New body (optional)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            updates = {}
+            if headers is not None:
+                updates['headers'] = json.dumps(headers)
+            if body is not None:
+                updates['body'] = body
+                
+            if updates:
+                self.client.hset(f"request:{request_id}", mapping=updates)
+            return True
+        except Exception as e:
+            print(f"[-] Error updating request data: {e}")
+            return False
+
+    def update_response_data(self, request_id: str, headers: Optional[Dict] = None, body: Optional[str] = None) -> bool:
+        """
+        Update response headers and body
+        
+        Args:
+            request_id: The request ID
+            headers: New headers (optional)
+            body: New body (optional)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            updates = {}
+            if headers is not None:
+                updates['headers'] = json.dumps(headers)
+            if body is not None:
+                updates['body'] = body
+                
+            if updates:
+                self.client.hset(f"response:{request_id}", mapping=updates)
+            return True
+        except Exception as e:
+            print(f"[-] Error updating response data: {e}")
+            return False
 
     def set_modified_body(self, request_id: str, modified_body: str) -> bool:
         """

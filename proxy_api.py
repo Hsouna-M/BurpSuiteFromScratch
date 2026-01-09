@@ -85,13 +85,48 @@ class ProxyAPI:
             }), 200        
         @self.app.route('/api/requests/<request_id>/allow', methods=['POST'])
         def allow_request(request_id: str) -> Tuple[Dict[str, Any], int]:
-            """Mark request as allowed (to be forwarded)"""
-            success = self.storage.update_request_status(request_id, 'allowed')
-            if success:
-                print(f"[+] Request {request_id} is ALLOWED")
-                return jsonify({'status': 'allowed'}), 200
-            else:
-                return jsonify({'error': 'Failed to update status'}), 500
+            """Mark request as allowed (to be forwarded), optionally updating data"""
+            try:
+                # Check for modifications
+                data = flask_request.get_json(silent=True)
+                if data:
+                    headers = data.get('headers')
+                    body = data.get('body')
+                    if headers or body is not None:
+                        self.storage.update_request_data(request_id, headers, body)
+                
+                success = self.storage.update_request_status(request_id, 'allowed')
+                if success:
+                    print(f"[+] Request {request_id} is ALLOWED")
+                    return jsonify({'status': 'allowed'}), 200
+                else:
+                    return jsonify({'error': 'Failed to update status'}), 500
+            except Exception as e:
+                return jsonify({'error': str(e)}), 400
+        
+        @self.app.route('/api/responses/<request_id>/allow', methods=['POST'])
+        def allow_response(request_id: str) -> Tuple[Dict[str, Any], int]:
+            """Mark response as allowed (to be returned to client), optionally updating data"""
+            try:
+                # Check for modifications
+                data = flask_request.get_json(silent=True)
+                if data:
+                    headers = data.get('headers')
+                    body = data.get('body')
+                    # Ensure headers is a dict if provided (JSON string from frontend?)
+                    # Frontend usually sends object, but let's be safe if we need to parse
+                    # Here we assume it receives a dict structure
+                    if headers or body is not None:
+                        self.storage.update_response_data(request_id, headers, body)
+
+                success = self.storage.update_response_status(request_id, 'allowed')
+                if success:
+                    print(f"[+] Response {request_id} is ALLOWED")
+                    return jsonify({'status': 'allowed'}), 200
+                else:
+                    return jsonify({'error': 'Failed to update status'}), 500
+            except Exception as e:
+                return jsonify({'error': str(e)}), 400
         
         @self.app.route('/api/requests/<request_id>/block', methods=['POST'])
         def block_request(request_id: str) -> Tuple[Dict[str, Any], int]:

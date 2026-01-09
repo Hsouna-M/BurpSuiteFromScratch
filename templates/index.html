@@ -1,38 +1,102 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>MITM Proxy Inspector</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; }
-        .container { display: flex; height: 100vh; }
-        .sidebar { width: 30%; border-right: 1px solid #444; overflow-y: auto; }
-        .main { width: 70%; display: flex; flex-direction: column; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 30%;
+            border-right: 1px solid #444;
+            overflow-y: auto;
+        }
+
+        .main {
+            width: 70%;
+            display: flex;
+            flex-direction: column;
+        }
+
         .request-item {
             padding: 10px;
             border-bottom: 1px solid #444;
             cursor: pointer;
             background: #252526;
         }
-        .request-item:hover { background: #2d2d30; }
-        .request-item.selected { background: #094771; }
-        
+
+        .request-item:hover {
+            background: #2d2d30;
+        }
+
+        .request-item.selected {
+            background: #094771;
+        }
+
         /* Tabs */
-        .tabs { display: flex; border-bottom: 1px solid #444; background: #252526; }
-        .tab { 
-            padding: 10px 20px; 
-            cursor: pointer; 
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #444;
+            background: #252526;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
             border-right: 1px solid #444;
             background: #2d2d30;
         }
-        .tab:hover { background: #3e3e42; }
-        .tab.active { background: #1e1e1e; border-bottom: 1px solid #1e1e1e; }
-        
-        .content-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .details { padding: 20px; overflow-y: auto; flex: 1; display: none; }
-        .details.active { display: block; }
-        
-        .controls { padding: 20px; border-top: 1px solid #444; display: flex; gap: 10px; background: #252526; }
+
+        .tab:hover {
+            background: #3e3e42;
+        }
+
+        .tab.active {
+            background: #1e1e1e;
+            border-bottom: 1px solid #1e1e1e;
+        }
+
+        .content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .details {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            display: none;
+        }
+
+        .details.active {
+            display: block;
+        }
+
+        .controls {
+            padding: 20px;
+            border-top: 1px solid #444;
+            display: flex;
+            gap: 10px;
+            background: #252526;
+        }
+
         button {
             padding: 10px 20px;
             border: none;
@@ -40,22 +104,39 @@
             border-radius: 4px;
             font-size: 14px;
         }
-        .allow { background: #4ec9b0; color: black; }
-        .block { background: #f48771; color: black; }
-        .modify { background: #569cd6; color: white; }
-        pre { background: #1e1e1e; padding: 15px; overflow-x: auto; border-radius: 4px; border: 1px solid #333; }
-        .status-badge {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 12px;
-            margin-left: 10px;
+
+        .allow {
+            background: #4ec9b0;
+            color: black;
         }
-        .status-badge.pending { background: #dcdcaa; color: black; }
-        .status-badge.allowed { background: #4ec9b0; color: black; }
-        .status-badge.blocked { background: #f48771; color: black; }
+
+        .block {
+            background: #f48771;
+            color: black;
+        }
+
+        textarea {
+            width: 100%;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            min-height: 100px;
+            margin-bottom: 15px;
+            resize: vertical;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #aaa;
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="sidebar" id="sidebar">
@@ -63,10 +144,10 @@
         </div>
         <div class="main">
             <div class="tabs">
-                <div class="tab active" onclick="switchTab('request')">Request</div>
-                <div class="tab" onclick="switchTab('response')">Response</div>
+                <div class="tab active" id="tab-request" onclick="switchTab('request')">Request</div>
+                <div class="tab" id="tab-response" onclick="switchTab('response')">Response</div>
             </div>
-            
+
             <div class="content-area">
                 <div class="details active" id="request-details">
                     <p style="padding: 20px; color: #888;">Select a request to inspect</p>
@@ -75,27 +156,28 @@
                     <p style="padding: 20px; color: #888;">Select a request or wait for response...</p>
                 </div>
             </div>
-            
+
             <div class="controls">
-                <button class="allow" onclick="allowRequest()">Allow</button>
-                <button class="block" onclick="blockRequest()">Block</button>
-                <button class="modify" onclick="modifyRequest()">Modify</button>
+                <button class="allow" onclick="forward()">Forward</button>
+                <button class="block" onclick="blockRequest()">Drop</button>
             </div>
         </div>
     </div>
 
     <script>
         let currentRequestId = null;
+        let currentTab = 'request';
 
         function switchTab(tabName) {
+            currentTab = tabName;
             // Update tabs
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
             // Update content
             document.querySelectorAll('.details').forEach(d => d.classList.remove('active'));
             document.getElementById(`${tabName}-details`).classList.add('active');
-            
+
             // If switching to response, try to fetch it
             if (tabName === 'response' && currentRequestId) {
                 fetchResponse(currentRequestId);
@@ -107,10 +189,10 @@
                 .then(r => r.json())
                 .then(requests => {
                     const sidebar = document.getElementById('sidebar');
-                    // Store current selection to restore active class if needed
+                    // Store current selection to restore active class
                     const currentSelection = document.querySelector('.request-item.selected');
                     const selectedId = currentSelection ? currentRequestId : null;
-                    
+
                     sidebar.innerHTML = '';
                     requests.forEach(req => {
                         const div = document.createElement('div');
@@ -125,90 +207,142 @@
 
         function selectRequest(id, element) {
             currentRequestId = id;
-            
+            switchTab('request'); // Always start on request tab
+
             // Update UI selection
             document.querySelectorAll('.request-item').forEach(i => i.classList.remove('selected'));
             element.classList.add('selected');
-            
+
             // Fetch request details
             fetch(`/api/requests/${id}`)
                 .then(r => r.json())
                 .then(req => {
                     const details = document.getElementById('request-details');
+
+                    // Format JSON body if possible
+                    let bodyVal = req.body || '';
+                    if (req.headers && req.headers['Content-Type'] && req.headers['Content-Type'].includes('json')) {
+                        try { bodyVal = JSON.stringify(JSON.parse(bodyVal), null, 2); } catch (e) { }
+                    }
+
                     details.innerHTML = `
                         <h3>${req.method} ${req.hostname}${req.path}</h3>
-                        <h4>Headers:</h4>
-                        <pre>${JSON.stringify(req.headers, null, 2)}</pre>
-                        <h4>Body:</h4>
-                        <pre>${req.body ? req.body.replace(/</g, '&lt;') : ''}</pre>
+                        
+                        <label>Headers (JSON):</label>
+                        <textarea id="req-headers">${JSON.stringify(req.headers, null, 2)}</textarea>
+                        
+                        <label>Body:</label>
+                        <textarea id="req-body">${bodyVal}</textarea>
                     `;
-                    
-                    // Clear response view initially when selecting new request
+
+                    // Clear response view initially
                     document.getElementById('response-details').innerHTML = '<p style="padding: 20px; color: #888;">Fetching response status...</p>';
-                    fetchResponse(id);
+                    // Don't auto-fetch response, wait for switch or logic
                 });
         }
-        
+
         function fetchResponse(id) {
+            // Check if we already have editable fields to avoid overwriting edits if we poll
+            if (document.getElementById('res-headers')) return;
+
             fetch(`/api/responses/${id}`)
                 .then(r => {
                     if (r.status === 404) {
-                        document.getElementById('response-details').innerHTML = '<p style="padding: 20px; color: #dcdcaa;">Response pending or not available yet. (Allow the request to fetch)</p>';
+                        const details = document.getElementById('response-details');
+                        details.innerHTML = '<p style="padding: 20px; color: #dcdcaa;">Response pending. Forward request to load response.</p>';
                         return null;
                     }
                     return r.json();
                 })
                 .then(resp => {
                     if (!resp) return;
-                    
+
                     const details = document.getElementById('response-details');
-                    
-                    // Format body if it looks like JSON
+                    if (resp.status_code === undefined) return; // incomplete
+
+                    // Format body
                     let bodyDisplay = resp.body;
                     try {
                         const jsonBody = JSON.parse(resp.body);
                         bodyDisplay = JSON.stringify(jsonBody, null, 2);
-                    } catch(e) {}
-                    
+                    } catch (e) { }
+
                     details.innerHTML = `
                         <h3 style="color: ${resp.status_code >= 200 && resp.status_code < 300 ? '#4ec9b0' : '#f48771'}">
                             Status: ${resp.status_code}
                         </h3>
-                        <h4>Headers:</h4>
-                        <pre>${JSON.stringify(resp.headers, null, 2)}</pre>
-                        <h4>Body:</h4>
-                        <pre>${bodyDisplay ? bodyDisplay.replace(/</g, '&lt;') : ''}</pre>
+                        
+                        <label>Headers (JSON):</label>
+                        <textarea id="res-headers">${JSON.stringify(resp.headers, null, 2)}</textarea>
+                        
+                        <label>Body:</label>
+                        <textarea id="res-body">${bodyDisplay}</textarea>
                     `;
                 });
         }
 
-        function allowRequest() {
+        function forward() {
             if (!currentRequestId) return;
-            fetch(`/api/requests/${currentRequestId}/allow`, { method: 'POST' })
-                .then(() => {
-                    // Switch to response tab to see the result
-                    setTimeout(() => {
-                        const tabs = document.querySelectorAll('.tab');
-                        if (tabs[1]) tabs[1].click();
-                        fetchResponse(currentRequestId);
-                    }, 1000); 
+
+            if (currentTab === 'request') {
+                // Forward Request
+                const headersStr = document.getElementById('req-headers').value;
+                const bodyStr = document.getElementById('req-body').value;
+                let headers = {};
+
+                try {
+                    headers = JSON.parse(headersStr);
+                } catch (e) {
+                    alert('Invalid Headers JSON');
+                    return;
+                }
+
+                fetch(`/api/requests/${currentRequestId}/allow`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        headers: headers,
+                        body: bodyStr
+                    })
+                }).then(() => {
+                    // Switch to response tab
+                    switchTab('response');
+                    // Poll for response
+                    setTimeout(() => fetchResponse(currentRequestId), 1000);
                 });
+
+            } else {
+                // Forward Response
+                const headersStr = document.getElementById('res-headers').value;
+                const bodyStr = document.getElementById('res-body').value;
+                let headers = {};
+
+                try {
+                    headers = JSON.parse(headersStr);
+                } catch (e) {
+                    alert('Invalid Headers JSON');
+                    return;
+                }
+
+                fetch(`/api/responses/${currentRequestId}/allow`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        headers: headers,
+                        body: bodyStr
+                    })
+                }).then(() => {
+                    alert('Response forwarded!');
+                    // Optionally clear selection or go back to request list
+                });
+            }
         }
 
         function blockRequest() {
             if (!currentRequestId) return;
+            // Always block the whole flow (request level)
             fetch(`/api/requests/${currentRequestId}/block`, { method: 'POST' })
                 .then(() => refreshRequests());
-        }
-
-        function modifyRequest() {
-            const newBody = prompt('Enter modified body:');
-            if (!newBody) return;
-            fetch(`/api/requests/${currentRequestId}/modify`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ body: newBody })
-            }).then(() => refreshRequests());
         }
 
         // Refresh requests every 2 seconds
@@ -216,4 +350,5 @@
         refreshRequests();
     </script>
 </body>
+
 </html>

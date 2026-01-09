@@ -250,6 +250,17 @@ class MITMProxyServer:
                 ssl_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
             
             elif status == 'allowed':
+                # Reload request data in case it was modified
+                req_data = self.storage.get_request(request_id)
+                if req_data:
+                    method = req_data['method']
+                    path = req_data['path']
+                    headers = req_data['headers']
+                    # Check if body was modified (stored as string/hex)
+                    # For now assume string if modified
+                    if 'body' in req_data:
+                        body = req_data['body']
+                
                 print(f"[!] Request allowed - Forwarding to {hostname}...")
                 
                 try:
@@ -262,8 +273,8 @@ class MITMProxyServer:
                         url=url,
                         headers=headers,
                         data=body,
-                        verify=False,  # Ignore SSL verify for upstream (optional, but often needed in lab/proxy setups)
-                        allow_redirects=False # We want to capture the 3xx response, not follow it
+                        verify=False,  # Ignore SSL verify for upstream
+                        allow_redirects=False 
                     )
                     
                     print(f"[+] Received response from server: {response.status_code}")
@@ -273,26 +284,60 @@ class MITMProxyServer:
                         request_id=request_id,
                         status_code=response.status_code,
                         headers=dict(response.headers),
-                        body=response.text # Or response.content if binary is critical
+                        body=response.text 
                     )
                     
-                    # Send response back to client
-                    # Construct status line
-                    status_line = f"HTTP/1.1 {response.status_code} {response.reason}\r\n"
-                    ssl_socket.send(status_line.encode())
+                    # Wait for Response Decision
+                    print(f"[*] Waiting for RESPONSE decision...")
+                    resp_waited = 0
+                    resp_status = 'pending'
+                    while resp_waited < max_wait:
+                        resp_status = self.storage.get_response_status(request_id)
+                        if resp_status != 'pending':
+                             break
+                        time.sleep(0.5)
+                        resp_waited += 0.5
                     
-                    # Send headers
-                    for key, value in response.headers.items():
-                        # Skip transfer-encoding as we handle body explicitly
-                        if key.lower() == 'transfer-encoding':
-                            continue
-                        header_line = f"{key}: {value}\r\n"
-                        ssl_socket.send(header_line.encode())
-                    
-                    ssl_socket.send(b"\r\n")
-                    
-                    # Send body
-                    ssl_socket.send(response.content)
+                    if resp_status == 'allowed':
+                        # Reload response data in case it was modified
+                        stored_resp = self.storage.get_response(request_id)
+                        resp_status_code = response.status_code
+                        resp_headers = dict(response.headers)
+                        resp_body = response.content
+                        
+                        if stored_resp:
+                            resp_status_code = int(stored_resp.get('status_code', response.status_code))
+                            resp_headers = stored_resp.get('headers', resp_headers)
+                            resp_body_str = stored_resp.get('body')
+                            if resp_body_str is not None:
+                                resp_body = resp_body_str.encode('utf-8')
+
+                        # Send response back to client
+                        # Construct status line
+                        status_line = f"HTTP/1.1 {resp_status_code} OK\r\n" # Simplified reason
+                        ssl_socket.send(status_line.encode())
+                        
+                        # Send headers
+                        for key, value in resp_headers.items():
+                            if key.lower() == 'transfer-encoding' or key.lower() == 'content-encoding':
+                                continue
+                            # Update content-length if body changed
+                            if key.lower() == 'content-length':
+                                value = str(len(resp_body))
+                                
+                            header_line = f"{key}: {value}\r\n"
+                            ssl_socket.send(header_line.encode())
+                        
+                        ssl_socket.send(b"\r\n")
+                        
+                        # Send body
+                        ssl_socket.send(resp_body)
+                        print(f"[+] Response forwarded to client")
+                        
+                    elif resp_status == 'blocked':
+                         ssl_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+                    else:
+                         ssl_socket.send(b"HTTP/1.1 504 Gateway Timeout\r\n\r\nResponse decision timeout")
                     
                 except Exception as e:
                     print(f"[-] Error forwarding HTTPS request: {e}")
@@ -385,6 +430,15 @@ class MITMProxyServer:
                 client_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
                 
             elif status == 'allowed':
+                # Reload request data in case it was modified
+                req_data = self.storage.get_request(request_id)
+                if req_data:
+                    method = req_data['method']
+                    path = req_data['path']
+                    headers = req_data['headers']
+                    if 'body' in req_data:
+                        body = req_data['body']
+
                 print(f"[!] Request allowed - Forwarding to {hostname}...")
                 
                 try:
@@ -392,7 +446,6 @@ class MITMProxyServer:
                     if path.startswith('http://'):
                          url = path
                     else:
-                         # Ensure we don't duplicate slash if path starts with /
                          clean_path = path if path.startswith('/') else f"/{path}"
                          url = f"http://{hostname}{clean_path}"
                     
@@ -415,21 +468,54 @@ class MITMProxyServer:
                         body=response.text
                     )
                     
-                    # Send response back to client
-                    status_line = f"HTTP/1.1 {response.status_code} {response.reason}\r\n"
-                    client_socket.send(status_line.encode())
+                    # Wait for Response Decision
+                    print(f"[*] Waiting for RESPONSE decision...")
+                    resp_waited = 0
+                    resp_status = 'pending'
+                    while resp_waited < max_wait:
+                        resp_status = self.storage.get_response_status(request_id)
+                        if resp_status != 'pending':
+                             break
+                        time.sleep(0.5)
+                        resp_waited += 0.5
                     
-                    # Send headers
-                    for key, value in response.headers.items():
-                        if key.lower() == 'transfer-encoding':
-                            continue
-                        header_line = f"{key}: {value}\r\n"
-                        client_socket.send(header_line.encode())
-                    
-                    client_socket.send(b"\r\n")
-                    
-                    # Send body
-                    client_socket.send(response.content)
+                    if resp_status == 'allowed':
+                        # Reload response data in case it was modified
+                        stored_resp = self.storage.get_response(request_id)
+                        resp_status_code = response.status_code
+                        resp_headers = dict(response.headers)
+                        resp_body = response.content
+                        
+                        if stored_resp:
+                            resp_status_code = int(stored_resp.get('status_code', response.status_code))
+                            resp_headers = stored_resp.get('headers', resp_headers)
+                            resp_body_str = stored_resp.get('body')
+                            if resp_body_str is not None:
+                                resp_body = resp_body_str.encode('utf-8')
+
+                        # Send response back to client
+                        status_line = f"HTTP/1.1 {resp_status_code} OK\r\n"
+                        client_socket.send(status_line.encode())
+                        
+                        # Send headers
+                        for key, value in resp_headers.items():
+                            if key.lower() == 'transfer-encoding' or key.lower() == 'content-encoding':
+                                continue
+                            if key.lower() == 'content-length':
+                                value = str(len(resp_body))
+                            header_line = f"{key}: {value}\r\n"
+                            client_socket.send(header_line.encode())
+                        
+                        client_socket.send(b"\r\n")
+                        
+                        # Send body
+                        client_socket.send(resp_body)
+                        print(f"[+] Response forwarded to client")
+                        
+                    elif resp_status == 'blocked':
+                         client_socket.send(b"HTTP/1.1 403 Forbidden\r\n\r\nBlocked by proxy")
+                    else:
+                         client_socket.send(b"HTTP/1.1 504 Gateway Timeout\r\n\r\nResponse decision timeout")
                     
                 except Exception as e:
                     print(f"[-] Error forwarding HTTP request: {e}")
