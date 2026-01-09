@@ -11,20 +11,73 @@
         }
 
         body {
-            font-family: monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #1e1e1e;
             color: #d4d4d4;
-        }
-
-        .container {
-            display: flex;
             height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
+        /* Header / Mode Switcher */
+        header {
+            background: #2d2d30;
+            padding: 10px 20px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 18px;
+            color: #4ec9b0;
+        }
+
+        .mode-switch {
+            display: flex;
+            background: #1e1e1e;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #444;
+        }
+
+        .mode-btn {
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            color: #888;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .mode-btn:hover {
+            color: #fff;
+        }
+
+        .mode-btn.active {
+            background: #007acc;
+            color: white;
+        }
+
+        /* Views */
+        .view-container {
+            flex: 1;
+            display: none;
+            height: calc(100vh - 54px);
+        }
+
+        .view-container.active {
+            display: flex;
+        }
+
+        /* Intercept View Styles */
         .sidebar {
             width: 30%;
             border-right: 1px solid #444;
             overflow-y: auto;
+            background: #252526;
         }
 
         .main {
@@ -38,6 +91,11 @@
             border-bottom: 1px solid #444;
             cursor: pointer;
             background: #252526;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .request-item:hover {
@@ -46,9 +104,9 @@
 
         .request-item.selected {
             background: #094771;
+            color: white;
         }
 
-        /* Tabs */
         .tabs {
             display: flex;
             border-bottom: 1px solid #444;
@@ -60,10 +118,6 @@
             cursor: pointer;
             border-right: 1px solid #444;
             background: #2d2d30;
-        }
-
-        .tab:hover {
-            background: #3e3e42;
         }
 
         .tab.active {
@@ -97,12 +151,84 @@
             background: #252526;
         }
 
+        /* Filter View Styles */
+        .filter-panel {
+            padding: 40px;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            overflow-y: auto;
+        }
+
+        .filter-section {
+            background: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 1px solid #444;
+        }
+
+        .filter-section h2 {
+            margin-bottom: 15px;
+            color: #dcdcaa;
+            font-size: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 10px;
+            background: #1e1e1e;
+            border: 1px solid #444;
+            color: white;
+            border-radius: 4px;
+        }
+
+        .list-container {
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 4px;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .list-item {
+            padding: 10px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .list-item:last-child {
+            border-bottom: none;
+        }
+
+        .list-item span {
+            font-family: monospace;
+        }
+
+        .list-item button {
+            padding: 4px 8px;
+            font-size: 12px;
+            background: #f48771;
+            color: #000;
+        }
+
+        /* Common Elements */
         button {
             padding: 10px 20px;
             border: none;
             cursor: pointer;
             border-radius: 4px;
             font-size: 14px;
+            font-weight: bold;
         }
 
         .allow {
@@ -112,6 +238,11 @@
 
         .block {
             background: #f48771;
+            color: black;
+        }
+
+        .add-btn {
+            background: #4ec9b0;
             color: black;
         }
 
@@ -138,9 +269,18 @@
 </head>
 
 <body>
-    <div class="container">
+    <header>
+        <h1>MITM Proxy Inspector</h1>
+        <div class="mode-switch">
+            <button class="mode-btn active" id="btn-intercept" onclick="setMode('intercept')">Intercept Mode</button>
+            <button class="mode-btn" id="btn-filter" onclick="setMode('filter')">Filter Mode</button>
+        </div>
+    </header>
+
+    <!-- Intercept View -->
+    <div class="view-container active" id="view-intercept">
         <div class="sidebar" id="sidebar">
-            <!-- Requests listed here -->
+            <div style="padding: 20px; text-align: center; color: #666;">Waiting for requests...</div>
         </div>
         <div class="main">
             <div class="tabs">
@@ -164,35 +304,205 @@
         </div>
     </div>
 
+    <!-- Filter View -->
+    <div class="view-container" id="view-filter">
+        <div class="filter-panel">
+            <div class="filter-section">
+                <h2>Blocked Domains</h2>
+                <div class="input-group">
+                    <input type="text" id="domain-input" placeholder="e.g. example.com">
+                    <button class="add-btn" onclick="addDomain()">Add Domain</button>
+                </div>
+                <div class="list-container" id="domain-list">
+                    <!-- Domains go here -->
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <h2>Blocked Keywords (Response Body)</h2>
+                <div class="input-group">
+                    <input type="text" id="keyword-input" placeholder="e.g. secret">
+                    <button class="add-btn" onclick="addKeyword()">Add Keyword</button>
+                </div>
+                <div class="list-container" id="keyword-list">
+                    <!-- Keywords go here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentRequestId = null;
         let currentTab = 'request';
+        let refreshInterval = null;
 
+        // ----------------------------------------------------------------
+        // Initialization
+        // ----------------------------------------------------------------
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load current mode
+            fetch('/api/config/mode')
+                .then(r => r.json())
+                .then(data => {
+                    updateModeUI(data.mode);
+                })
+                .catch(e => console.error('Error fetching mode:', e));
+        });
+
+        // ----------------------------------------------------------------
+        // Mode Handling
+        // ----------------------------------------------------------------
+        function setMode(mode) {
+            fetch('/api/config/mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: mode })
+            })
+                .then(r => r.json())
+                .then(data => {
+                    updateModeUI(mode);
+                });
+        }
+
+        function updateModeUI(mode) {
+            // Update Buttons
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+
+            // Update Views
+            document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
+            document.getElementById(`view-${mode}`).classList.add('active');
+
+            // Stop/Start Polling
+            if (mode === 'intercept') {
+                refreshRequests();
+                if (!refreshInterval) refreshInterval = setInterval(refreshRequests, 2000);
+            } else {
+                if (refreshInterval) {
+                    clearInterval(refreshInterval);
+                    refreshInterval = null;
+                }
+                loadFilterSettings();
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // Filter Mode Logic
+        // ----------------------------------------------------------------
+        function loadFilterSettings() {
+            // Load Domains
+            fetch('/api/config/domains')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('domain-list');
+                    list.innerHTML = '';
+                    if (data.domains.length === 0) list.innerHTML = '<div style="padding:10px; color:#666">No blocked domains</div>';
+
+                    data.domains.forEach(domain => {
+                        const item = document.createElement('div');
+                        item.className = 'list-item';
+                        item.innerHTML = `
+                            <span>${domain}</span>
+                            <button onclick="removeDomain('${domain}')">Remove</button>
+                        `;
+                        list.appendChild(item);
+                    });
+                });
+
+            // Load Keywords
+            fetch('/api/config/keywords')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('keyword-list');
+                    list.innerHTML = '';
+                    if (data.keywords.length === 0) list.innerHTML = '<div style="padding:10px; color:#666">No blocked keywords</div>';
+
+                    data.keywords.forEach(keyword => {
+                        const item = document.createElement('div');
+                        item.className = 'list-item';
+                        item.innerHTML = `
+                            <span>${keyword}</span>
+                            <button onclick="removeKeyword('${keyword}')">Remove</button>
+                        `;
+                        list.appendChild(item);
+                    });
+                });
+        }
+
+        function addDomain() {
+            const input = document.getElementById('domain-input');
+            const domain = input.value.trim();
+            if (!domain) return;
+
+            fetch('/api/config/domains', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ domain: domain })
+            }).then(() => {
+                input.value = '';
+                loadFilterSettings();
+            });
+        }
+
+        function removeDomain(domain) {
+            fetch(`/api/config/domains/${domain}`, { method: 'DELETE' })
+                .then(() => loadFilterSettings());
+        }
+
+        function addKeyword() {
+            const input = document.getElementById('keyword-input');
+            const keyword = input.value.trim();
+            if (!keyword) return;
+
+            fetch('/api/config/keywords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keyword: keyword })
+            }).then(() => {
+                input.value = '';
+                loadFilterSettings();
+            });
+        }
+
+        function removeKeyword(keyword) {
+            fetch(`/api/config/keywords/${keyword}`, { method: 'DELETE' })
+                .then(() => loadFilterSettings());
+        }
+
+
+        // ----------------------------------------------------------------
+        // Intercept Mode Logic (Existing + Refined)
+        // ----------------------------------------------------------------
         function switchTab(tabName) {
             currentTab = tabName;
-            // Update tabs
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.getElementById(`tab-${tabName}`).classList.add('active');
 
-            // Update content
             document.querySelectorAll('.details').forEach(d => d.classList.remove('active'));
             document.getElementById(`${tabName}-details`).classList.add('active');
 
-            // If switching to response, try to fetch it
             if (tabName === 'response' && currentRequestId) {
                 fetchResponse(currentRequestId);
             }
         }
 
         function refreshRequests() {
+            // Only refresh if visible
+            if (!document.getElementById('view-intercept').classList.contains('active')) return;
+
             fetch('/api/requests')
                 .then(r => r.json())
                 .then(requests => {
                     const sidebar = document.getElementById('sidebar');
-                    // Store current selection to restore active class
                     const currentSelection = document.querySelector('.request-item.selected');
                     const selectedId = currentSelection ? currentRequestId : null;
 
+                    if (requests.length === 0) {
+                        sidebar.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No pending requests</div>';
+                        return;
+                    }
+
+                    // Simple diff check could be better but overwriting is safe for now
                     sidebar.innerHTML = '';
                     requests.forEach(req => {
                         const div = document.createElement('div');
@@ -207,19 +517,14 @@
 
         function selectRequest(id, element) {
             currentRequestId = id;
-            switchTab('request'); // Always start on request tab
-
-            // Update UI selection
+            switchTab('request');
             document.querySelectorAll('.request-item').forEach(i => i.classList.remove('selected'));
             element.classList.add('selected');
 
-            // Fetch request details
             fetch(`/api/requests/${id}`)
                 .then(r => r.json())
                 .then(req => {
                     const details = document.getElementById('request-details');
-
-                    // Format JSON body if possible
                     let bodyVal = req.body || '';
                     if (req.headers && req.headers['Content-Type'] && req.headers['Content-Type'].includes('json')) {
                         try { bodyVal = JSON.stringify(JSON.parse(bodyVal), null, 2); } catch (e) { }
@@ -227,40 +532,30 @@
 
                     details.innerHTML = `
                         <h3>${req.method} ${req.hostname}${req.path}</h3>
-                        
                         <label>Headers (JSON):</label>
                         <textarea id="req-headers">${JSON.stringify(req.headers, null, 2)}</textarea>
-                        
                         <label>Body:</label>
                         <textarea id="req-body">${bodyVal}</textarea>
                     `;
-
-                    // Clear response view initially
                     document.getElementById('response-details').innerHTML = '<p style="padding: 20px; color: #888;">Fetching response status...</p>';
-                    // Don't auto-fetch response, wait for switch or logic
                 });
         }
 
         function fetchResponse(id) {
-            // Check if we already have editable fields to avoid overwriting edits if we poll
             if (document.getElementById('res-headers')) return;
 
             fetch(`/api/responses/${id}`)
                 .then(r => {
                     if (r.status === 404) {
-                        const details = document.getElementById('response-details');
-                        details.innerHTML = '<p style="padding: 20px; color: #dcdcaa;">Response pending. Forward request to load response.</p>';
+                        document.getElementById('response-details').innerHTML = '<p style="padding: 20px; color: #dcdcaa;">Response pending. Forward request to load response.</p>';
                         return null;
                     }
                     return r.json();
                 })
                 .then(resp => {
                     if (!resp) return;
-
                     const details = document.getElementById('response-details');
-                    if (resp.status_code === undefined) return; // incomplete
 
-                    // Format body
                     let bodyDisplay = resp.body;
                     try {
                         const jsonBody = JSON.parse(resp.body);
@@ -271,10 +566,8 @@
                         <h3 style="color: ${resp.status_code >= 200 && resp.status_code < 300 ? '#4ec9b0' : '#f48771'}">
                             Status: ${resp.status_code}
                         </h3>
-                        
                         <label>Headers (JSON):</label>
                         <textarea id="res-headers">${JSON.stringify(resp.headers, null, 2)}</textarea>
-                        
                         <label>Body:</label>
                         <textarea id="res-body">${bodyDisplay}</textarea>
                     `;
@@ -285,69 +578,41 @@
             if (!currentRequestId) return;
 
             if (currentTab === 'request') {
-                // Forward Request
                 const headersStr = document.getElementById('req-headers').value;
                 const bodyStr = document.getElementById('req-body').value;
                 let headers = {};
-
-                try {
-                    headers = JSON.parse(headersStr);
-                } catch (e) {
-                    alert('Invalid Headers JSON');
-                    return;
-                }
+                try { headers = JSON.parse(headersStr); } catch (e) { alert('Invalid Headers JSON'); return; }
 
                 fetch(`/api/requests/${currentRequestId}/allow`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        headers: headers,
-                        body: bodyStr
-                    })
+                    body: JSON.stringify({ headers: headers, body: bodyStr })
                 }).then(() => {
-                    // Switch to response tab
                     switchTab('response');
-                    // Poll for response
                     setTimeout(() => fetchResponse(currentRequestId), 1000);
                 });
-
             } else {
-                // Forward Response
                 const headersStr = document.getElementById('res-headers').value;
                 const bodyStr = document.getElementById('res-body').value;
                 let headers = {};
-
-                try {
-                    headers = JSON.parse(headersStr);
-                } catch (e) {
-                    alert('Invalid Headers JSON');
-                    return;
-                }
+                try { headers = JSON.parse(headersStr); } catch (e) { alert('Invalid Headers JSON'); return; }
 
                 fetch(`/api/responses/${currentRequestId}/allow`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        headers: headers,
-                        body: bodyStr
-                    })
+                    body: JSON.stringify({ headers: headers, body: bodyStr })
                 }).then(() => {
                     alert('Response forwarded!');
-                    // Optionally clear selection or go back to request list
+                    refreshRequests();
                 });
             }
         }
 
         function blockRequest() {
             if (!currentRequestId) return;
-            // Always block the whole flow (request level)
             fetch(`/api/requests/${currentRequestId}/block`, { method: 'POST' })
                 .then(() => refreshRequests());
         }
-
-        // Refresh requests every 2 seconds
-        setInterval(refreshRequests, 2000);
-        refreshRequests();
     </script>
 </body>
 

@@ -212,6 +212,69 @@ class MITMProxyServer:
             headers = parsed['headers']
             body = parsed['body']
             
+            # -----------------------------------------------------------------
+            # Filter Mode Check
+            # -----------------------------------------------------------------
+            if self.storage.get_proxy_mode() == 'filter':
+                # Check Blocked Domains
+                blocked_domains = self.storage.get_blocked_domains()
+                if hostname in blocked_domains:
+                     print(f"[!] Request to {hostname} BLOCKED by Filter Mode")
+                     html_content = "<html><body><h1>Access Denied</h1><p>The domain <b>{}</b> is blocked by the proxy.</p></body></html>".format(hostname)
+                     response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}".format(len(html_content), html_content)
+                     ssl_socket.send(response.encode())
+                     return
+
+                # Forward Request Automatically
+                print(f"[!] Filter Mode: Auto-forwarding to {hostname}...")
+                try:
+                    url = f"https://{hostname}{path}"
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        verify=False,
+                        allow_redirects=False
+                    )
+                    
+                    # Check Blocked Keywords in Response
+                    blocked_keywords = self.storage.get_blocked_keywords()
+                    resp_content = response.text
+                    
+                    for keyword in blocked_keywords:
+                        if keyword in resp_content:
+                            print(f"[!] Response from {hostname} BLOCKED by Filter Mode (Keyword: {keyword})")
+                            html_content = "<html><body><h1>Access Denied</h1><p>The response contained a blocked keyword: <b>{}</b></p></body></html>".format(keyword)
+                            resp_str = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}".format(len(html_content), html_content)
+                            ssl_socket.send(resp_str.encode())
+                            return
+
+                    # Forward Response
+                    status_line = f"HTTP/1.1 {response.status_code} OK\r\n"
+                    ssl_socket.send(status_line.encode())
+                    
+                    for key, value in response.headers.items():
+                        if key.lower() in ['transfer-encoding', 'content-encoding', 'content-length']:
+                            continue
+                        header_line = f"{key}: {value}\r\n"
+                        ssl_socket.send(header_line.encode())
+                    
+                    ssl_socket.send(f"Content-Length: {len(response.content)}\r\n".encode())
+                    ssl_socket.send(b"\r\n")
+                    ssl_socket.send(response.content)
+                    print(f"[+] Response forwarded (Filter Mode)")
+                    return
+
+                except Exception as e:
+                    print(f"[-] Error forwarding in Filter Mode: {e}")
+                    ssl_socket.send(b"HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error")
+                    return
+
+            # -----------------------------------------------------------------
+            # Intercept Mode (Original Logic)
+            # -----------------------------------------------------------------
+            
             # Create unique request ID
             request_id = str(uuid.uuid4())
             timestamp = datetime.now().isoformat()
@@ -402,6 +465,73 @@ class MITMProxyServer:
                  if '://' in path:
                      hostname = path.split('://')[1].split('/')[0]
             
+            # -----------------------------------------------------------------
+            # Filter Mode Check
+            # -----------------------------------------------------------------
+            if self.storage.get_proxy_mode() == 'filter':
+                # Check Blocked Domains
+                blocked_domains = self.storage.get_blocked_domains()
+                if hostname in blocked_domains:
+                     print(f"[!] Request to {hostname} BLOCKED by Filter Mode")
+                     html_content = "<html><body><h1>Access Denied</h1><p>The domain <b>{}</b> is blocked by the proxy.</p></body></html>".format(hostname)
+                     response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}".format(len(html_content), html_content)
+                     client_socket.send(response.encode())
+                     return
+
+                # Forward Request Automatically
+                print(f"[!] Filter Mode: Auto-forwarding to {hostname}...")
+                try:
+                    if path.startswith('http://'):
+                         url = path
+                    else:
+                         clean_path = path if path.startswith('/') else f"/{path}"
+                         url = f"http://{hostname}{clean_path}"
+                    
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        allow_redirects=False
+                    )
+                    
+                    # Check Blocked Keywords in Response
+                    blocked_keywords = self.storage.get_blocked_keywords()
+                    resp_content = response.text
+                    
+                    for keyword in blocked_keywords:
+                        if keyword in resp_content:
+                            print(f"[!] Response from {hostname} BLOCKED by Filter Mode (Keyword: {keyword})")
+                            html_content = "<html><body><h1>Access Denied</h1><p>The response contained a blocked keyword: <b>{}</b></p></body></html>".format(keyword)
+                            resp_str = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}".format(len(html_content), html_content)
+                            client_socket.send(resp_str.encode())
+                            return
+
+                    # Forward Response
+                    status_line = f"HTTP/1.1 {response.status_code} OK\r\n"
+                    client_socket.send(status_line.encode())
+                    
+                    for key, value in response.headers.items():
+                        if key.lower() in ['transfer-encoding', 'content-encoding', 'content-length']:
+                            continue
+                        header_line = f"{key}: {value}\r\n"
+                        client_socket.send(header_line.encode())
+                    
+                    client_socket.send(f"Content-Length: {len(response.content)}\r\n".encode())
+                    client_socket.send(b"\r\n")
+                    client_socket.send(response.content)
+                    print(f"[+] Response forwarded (Filter Mode)")
+                    return
+
+                except Exception as e:
+                    print(f"[-] Error forwarding in Filter Mode: {e}")
+                    client_socket.send(b"HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error")
+                    return
+
+            # -----------------------------------------------------------------
+            # Intercept Mode (Original Logic)
+            # -----------------------------------------------------------------
+
             # Create unique request ID
             request_id = str(uuid.uuid4())
             timestamp = datetime.now().isoformat()

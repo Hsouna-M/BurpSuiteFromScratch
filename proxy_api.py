@@ -128,6 +128,15 @@ class ProxyAPI:
             except Exception as e:
                 return jsonify({'error': str(e)}), 400
         
+        @self.app.route('/api/requests/<request_id>/delete', methods=['DELETE'])
+        def delete_request(request_id: str) -> Tuple[Dict[str, Any], int]:
+            """Delete a request"""
+            success = self.storage.delete_request(request_id)
+            if success:
+                return jsonify({'status': 'deleted'}), 200
+            else:
+                return jsonify({'error': 'Failed to delete request'}), 500
+
         @self.app.route('/api/requests/<request_id>/block', methods=['POST'])
         def block_request(request_id: str) -> Tuple[Dict[str, Any], int]:
             """Mark request as blocked (will not be forwarded)"""
@@ -137,6 +146,87 @@ class ProxyAPI:
                 return jsonify({'status': 'blocked'}), 200
             else:
                 return jsonify({'error': 'Failed to update status'}), 500
+        
+        # -------------------------------------------------------------------------
+        # Configuration Endpoints (Filter Mode)
+        # -------------------------------------------------------------------------
+        
+        @self.app.route('/api/config/mode', methods=['GET'])
+        def get_proxy_mode() -> Tuple[Dict[str, Any], int]:
+            """Get current proxy mode"""
+            mode = self.storage.get_proxy_mode()
+            return jsonify({'mode': mode}), 200
+            
+        @self.app.route('/api/config/mode', methods=['POST'])
+        def set_proxy_mode() -> Tuple[Dict[str, Any], int]:
+            """Set proxy mode"""
+            data = flask_request.get_json(silent=True)
+            if not data or 'mode' not in data:
+                return jsonify({'error': 'Mode required'}), 400
+            
+            mode = data['mode']
+            if self.storage.set_proxy_mode(mode):
+                return jsonify({'status': 'success', 'mode': mode}), 200
+            else:
+                return jsonify({'error': 'Invalid mode'}), 400
+                
+        @self.app.route('/api/config/domains', methods=['GET'])
+        def get_blocked_domains() -> Tuple[Dict[str, Any], int]:
+            """Get blocked domains"""
+            domains = self.storage.get_blocked_domains()
+            return jsonify({'domains': domains}), 200
+            
+        @self.app.route('/api/config/domains', methods=['POST'])
+        def add_blocked_domain() -> Tuple[Dict[str, Any], int]:
+            """Add blocked domain"""
+            data = flask_request.get_json(silent=True)
+            if not data or 'domain' not in data:
+                return jsonify({'error': 'Domain required'}), 400
+                
+            domain = data['domain']
+            if self.storage.add_blocked_domain(domain):
+                return jsonify({'status': 'success', 'domain': domain}), 200
+            else:
+                return jsonify({'error': 'Failed to add domain'}), 500
+        
+        # We need to capture the domain from URL, but domains might have dots.
+        # Flask might interpret dots as file extensions if not careful, 
+        # but here it's part of the path, usually fine.
+        @self.app.route('/api/config/domains/<path:domain>', methods=['DELETE'])
+        def remove_blocked_domain(domain: str) -> Tuple[Dict[str, Any], int]:
+            """Remove blocked domain"""
+            if self.storage.remove_blocked_domain(domain):
+                return jsonify({'status': 'success', 'domain': domain}), 200
+            else:
+                return jsonify({'error': 'Failed to remove domain'}), 500
+                
+        @self.app.route('/api/config/keywords', methods=['GET'])
+        def get_blocked_keywords() -> Tuple[Dict[str, Any], int]:
+            """Get blocked keywords"""
+            keywords = self.storage.get_blocked_keywords()
+            return jsonify({'keywords': keywords}), 200
+            
+        @self.app.route('/api/config/keywords', methods=['POST'])
+        def add_blocked_keyword() -> Tuple[Dict[str, Any], int]:
+            """Add blocked keyword"""
+            data = flask_request.get_json(silent=True)
+            if not data or 'keyword' not in data:
+                return jsonify({'error': 'Keyword required'}), 400
+                
+            keyword = data['keyword']
+            if self.storage.add_blocked_keyword(keyword):
+                return jsonify({'status': 'success', 'keyword': keyword}), 200
+            else:
+                return jsonify({'error': 'Failed to add keyword'}), 500
+                
+        @self.app.route('/api/config/keywords/<path:keyword>', methods=['DELETE'])
+        def remove_blocked_keyword(keyword: str) -> Tuple[Dict[str, Any], int]:
+            """Remove blocked keyword"""
+            if self.storage.remove_blocked_keyword(keyword):
+                return jsonify({'status': 'success', 'keyword': keyword}), 200
+            else:
+                return jsonify({'error': 'Failed to remove keyword'}), 500
+
         
         # @self.app.route('/api/requests/<request_id>/modify', methods=['POST'])
         # def modify_request(request_id: str) -> Tuple[Dict[str, Any], int]:

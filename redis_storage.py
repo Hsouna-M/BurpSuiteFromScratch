@@ -406,3 +406,92 @@ class RedisStorage:
         except Exception as e:
             print(f"[-] Error clearing requests: {e}")
             return False
+
+    # -------------------------------------------------------------------------
+    # Proxy Configuration Methods (Filter Mode)
+    # -------------------------------------------------------------------------
+
+    def set_proxy_mode(self, mode: str) -> bool:
+        """
+        Set proxy operation mode ('intercept' or 'filter')
+        
+        Args:
+            mode: The mode string
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if mode not in ['intercept', 'filter']:
+                return False
+            self.client.set("proxy_config:mode", mode)
+            return True
+        except Exception as e:
+            print(f"[-] Error setting proxy mode: {e}")
+            return False
+
+    def get_proxy_mode(self) -> str:
+        """
+        Get current proxy operation mode
+        
+        Returns:
+            Mode string ('intercept' or 'filter') - defaults to 'intercept'
+        """
+        try:
+            mode = self.client.get("proxy_config:mode")
+            return mode if mode else "intercept"
+        except Exception as e:
+            print(f"[-] Error getting proxy mode: {e}")
+            return "intercept"
+
+    def add_blocked_domain(self, domain: str) -> bool:
+        """Add domain to blocklist"""
+        try:
+            self.client.sadd("proxy_config:blocked_domains", domain)
+            return True
+        except Exception as e:
+            print(f"[-] Error adding blocked domain: {e}")
+            return False
+
+    def remove_blocked_domain(self, domain: str) -> bool:
+        """Remove domain from blocklist"""
+        try:
+            self.client.srem("proxy_config:blocked_domains", domain)
+            return True
+        except Exception as e:
+            print(f"[-] Error removing blocked domain: {e}")
+            return False
+
+    def get_blocked_domains(self) -> List[str]:
+        """Get list of blocked domains"""
+        try:
+            return list(self.client.smembers("proxy_config:blocked_domains"))
+        except Exception as e:
+            print(f"[-] Error getting blocked domains: {e}")
+            return []
+
+    def add_blocked_keyword(self, keyword: str) -> bool:
+        """Add keyword to blocklist"""
+        try:
+            self.client.sadd("proxy_config:blocked_keywords", keyword)
+            return True
+        except Exception as e:
+            print(f"[-] Error adding blocked keyword: {e}")
+            return False
+
+    def remove_blocked_keyword(self, keyword: str) -> bool:
+        """Remove keyword from blocklist"""
+        try:
+            self.client.srem("proxy_config:blocked_keywords", keyword)
+            return True
+        except Exception as e:
+            print(f"[-] Error removing blocked keyword: {e}")
+            return False
+
+    def get_blocked_keywords(self) -> List[str]:
+        """Get list of blocked keywords"""
+        try:
+            return list(self.client.smembers("proxy_config:blocked_keywords"))
+        except Exception as e:
+            print(f"[-] Error getting blocked keywords: {e}")
+            return []
